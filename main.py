@@ -318,11 +318,15 @@ if __name__ == "__main__":
     try:
         run_control()
     except Exception as e:
-        logger.error(f"Error in initial control cycle: {e}")
+        logger.error(f"Error in initial control cycle: {e}", exc_info=True)
     
     # Start scheduler (blocks forever)
-    logger.info("Starting scheduler...")
+    logger.info("Starting scheduler... (this will block and keep the process running)")
     try:
         scheduler.start()
+        logger.info("Scheduler stopped normally (should not reach here)")
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Scheduler stopped.")
+        logger.info("Scheduler stopped by signal.")
+    except Exception as e:
+        logger.error(f"Scheduler failed: {e}", exc_info=True)
+        raise
