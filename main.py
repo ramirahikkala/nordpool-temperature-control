@@ -228,62 +228,101 @@ def update_setpoint_in_ha(setpoint_value):
         return False
 
 
-# Main execution
-logger.info("=" * 60)
-logger.info("Electricity Price-Based Temperature Control System")
-logger.info("=" * 60)
+def run_control():
+    """Execute one temperature control cycle."""
+    logger.info("=" * 60)
+    logger.info("Electricity Price-Based Temperature Control System")
+    logger.info("=" * 60)
 
-# Get base temperature
-logger.info("Fetching base temperature setpoint...")
-base_temperature = get_base_temperature()
+    # Get base temperature
+    logger.info("Fetching base temperature setpoint...")
+    base_temperature = get_base_temperature()
 
-# Get current electricity price
-logger.info(f"Fetching current electricity price from {PRICE_SENSOR}...")
-current_price = get_current_price()
+    # Get current electricity price
+    logger.info(f"Fetching current electricity price from {PRICE_SENSOR}...")
+    current_price = get_current_price()
 
-# Get current temperature
-logger.info(f"Fetching current temperature from {TEMPERATURE_SENSOR}...")
-current_temperature = get_current_temperature()
+    # Get current temperature
+    logger.info(f"Fetching current temperature from {TEMPERATURE_SENSOR}...")
+    current_temperature = get_current_temperature()
 
-if current_price is not None and current_temperature is not None:
-    logger.info(f"Current electricity price: {current_price} c/kWh")
-    logger.info(f"Current temperature: {current_temperature}°C")
-    
-    # Calculate target temperature
-    setpoint_temp, adjustment = get_setpoint_temperature(current_price, base_temperature)
-    
-    logger.info("Temperature Calculation:")
-    logger.info(f"  Base temperature: {base_temperature}°C")
-    logger.info(f"  Price adjustment: {adjustment:+.2f}°C")
-    logger.info(f"  → Target setpoint: {setpoint_temp}°C")
-    
-    # Update setpoint in HA
-    update_setpoint_in_ha(setpoint_temp)
-    
-    # Decision logic: heat if current temperature is below target setpoint
-    should_heat = current_temperature < setpoint_temp
-    temp_diff = setpoint_temp - current_temperature
-    
-    logger.info("Control Decision:")
-    logger.info(f"  Current: {current_temperature}°C")
-    logger.info(f"  Target:  {setpoint_temp}°C")
-    logger.info(f"  Difference: {temp_diff:+.2f}°C")
-    if should_heat:
-        logger.info("  → HEAT ON (current < target)")
+    if current_price is not None and current_temperature is not None:
+        logger.info(f"Current electricity price: {current_price} c/kWh")
+        logger.info(f"Current temperature: {current_temperature}°C")
+        
+        # Calculate target temperature
+        setpoint_temp, adjustment = get_setpoint_temperature(current_price, base_temperature)
+        
+        logger.info("Temperature Calculation:")
+        logger.info(f"  Base temperature: {base_temperature}°C")
+        logger.info(f"  Price adjustment: {adjustment:+.2f}°C")
+        logger.info(f"  → Target setpoint: {setpoint_temp}°C")
+        
+        # Update setpoint in HA
+        update_setpoint_in_ha(setpoint_temp)
+        
+        # Decision logic: heat if current temperature is below target setpoint
+        should_heat = current_temperature < setpoint_temp
+        temp_diff = setpoint_temp - current_temperature
+        
+        logger.info("Control Decision:")
+        logger.info(f"  Current: {current_temperature}°C")
+        logger.info(f"  Target:  {setpoint_temp}°C")
+        logger.info(f"  Difference: {temp_diff:+.2f}°C")
+        if should_heat:
+            logger.info("  → HEAT ON (current < target)")
+        else:
+            logger.info("  → HEAT OFF (current ≥ target)")
+        
+        # Apply control
+        logger.info("Applying control...")
+        control_heating(should_heat)
+        
+        logger.info("=" * 60)
+        logger.info("Temperature control executed successfully!")
+        logger.info("=" * 60)
     else:
-        logger.info("  → HEAT OFF (current ≥ target)")
+        if current_price is None:
+            logger.error("Failed to get electricity price.")
+        if current_temperature is None:
+            logger.error("Failed to get current temperature.")
+        logger.error("Aborting temperature control.")
+        logger.info("=" * 60)
+
+
+if __name__ == "__main__":
+    from apscheduler.schedulers.blocking import BlockingScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    import pytz
     
-    # Apply control
-    logger.info("Applying control...")
-    control_heating(should_heat)
+    # Get timezone from environment or default to Europe/Helsinki
+    tz = pytz.timezone(os.getenv("TZ", "Europe/Helsinki"))
     
-    logger.info("=" * 60)
-    logger.info("Temperature control executed successfully!")
-    logger.info("=" * 60)
-else:
-    if current_price is None:
-        logger.error("Failed to get electricity price.")
-    if current_temperature is None:
-        logger.error("Failed to get current temperature.")
-    logger.error("Aborting temperature control.")
-    logger.info("=" * 60)
+    # Create scheduler
+    scheduler = BlockingScheduler(timezone=tz)
+    
+    # Schedule to run at :00, :15, :30, :45 every hour
+    scheduler.add_job(
+        run_control,
+        trigger=CronTrigger(minute='0,15,30,45', timezone=tz),
+        id='temperature_control',
+        name='Temperature Control',
+        replace_existing=True
+    )
+    
+    logger.info("Scheduler initialized. Will run at :00, :15, :30, :45 every hour.")
+    logger.info(f"Timezone: {tz}")
+    logger.info("Running initial control cycle now...")
+    
+    # Run once immediately at startup
+    try:
+        run_control()
+    except Exception as e:
+        logger.error(f"Error in initial control cycle: {e}")
+    
+    # Start scheduler (blocks forever)
+    logger.info("Starting scheduler...")
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Scheduler stopped.")

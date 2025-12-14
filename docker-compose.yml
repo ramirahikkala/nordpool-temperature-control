@@ -7,13 +7,3 @@ services:
       - .env
     environment:
       - TZ=Europe/Helsinki
-    # Run every 15 minutes
-    command: >
-      sh -c "
-        while true; do
-          echo \"[$$(date)] Running temperature control...\"
-          uv run main.py
-          echo \"[$$(date)] Sleeping for 15 minutes...\"
-          sleep 900
-        done
-      "
