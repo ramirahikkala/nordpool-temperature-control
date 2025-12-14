@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import logging
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -149,7 +150,6 @@ def control_heating(should_heat):
         service_data = {
             "entity_id": SWITCH_ENTITY
         }
-        
         service_name = "turn_on" if should_heat else "turn_off"
         response = requests.post(
             f"{HA_URL}/api/services/switch/{service_name}",
@@ -157,13 +157,32 @@ def control_heating(should_heat):
             json=service_data,
             timeout=5
         )
-        
-        if response.status_code == 200:
-            status = "ON" if should_heat else "OFF"
-            logger.info(f"Heating switched {status}")
+
+        if 200 <= response.status_code < 300:
+            # Service accepted — verify the switch state (retry a few times)
+            expected_state = "on" if should_heat else "off"
+            for attempt in range(10):
+                try:
+                    # small backoff
+                    time.sleep(0.5 if attempt == 0 else 1)
+                    s = requests.get(f"{HA_URL}/api/states/{SWITCH_ENTITY}", headers=headers, timeout=5)
+                    if s.status_code == 200:
+                        state = s.json().get("state")
+                        if state == expected_state:
+                            logger.info(f"Heating switched {expected_state.upper()} (confirmed)")
+                            return True
+                    elif s.status_code == 404:
+                        # Entity not found — probably wrong entity id
+                        logger.error(f"Switch entity '{SWITCH_ENTITY}' not found in Home Assistant (404). Please verify SWITCH_ENTITY in .env")
+                        return False
+                except Exception as e:
+                    pass  # Retry
+
+            # Service accepted but state not confirmed — warn but return success
+            logger.warning(f"Service accepted but switch state not confirmed (expected: {expected_state})")
             return True
         else:
-            logger.error(f"Error controlling heating: Status {response.status_code}")
+            logger.error(f"Error controlling heating: Status {response.status_code} - {response.text}")
             return False
     except Exception as e:
         logger.error(f"Error controlling heating: {e}")
