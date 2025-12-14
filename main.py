@@ -43,6 +43,11 @@ PRICE_LOW_THRESHOLD = float(os.getenv("PRICE_LOW_THRESHOLD", "10.0"))
 PRICE_HIGH_THRESHOLD = float(os.getenv("PRICE_HIGH_THRESHOLD", "20.0"))
 TEMP_VARIATION = float(os.getenv("TEMP_VARIATION", "0.5"))
 
+# Central heating control configuration
+CENTRAL_HEATING_SHUTOFF_SWITCH = os.getenv("CENTRAL_HEATING_SHUTOFF_SWITCH")  # Optional switch to block central heating (ON = heating blocked)
+MAX_SHUTOFF_HOURS = float(os.getenv("MAX_SHUTOFF_HOURS", "6.0"))  # Max hours per day to turn off heating
+PRICE_ALWAYS_ON_THRESHOLD = float(os.getenv("PRICE_ALWAYS_ON_THRESHOLD", "5.0"))  # Below this price, always keep heating on
+
 # Headers for authentication
 headers = {
     "Authorization": f"Bearer {API_TOKEN}",
@@ -228,6 +233,140 @@ def update_setpoint_in_ha(setpoint_value):
         return False
 
 
+def get_daily_prices():
+    """Get all quarter-hourly prices for today from the Nordpool sensor.
+    
+    Returns:
+        list: List of prices (96 values for 24 hours at 15-minute resolution), or None on error
+    """
+    try:
+        response = requests.get(
+            f"{HA_URL}/api/states/{PRICE_SENSOR}",
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            prices = data.get('attributes', {}).get('today', [])
+            if len(prices) == 96:  # 24 hours * 4 quarters
+                return prices
+            else:
+                logger.warning(f"Unexpected number of prices: {len(prices)} (expected 96)")
+                return prices if prices else None
+        else:
+            logger.error(f"Error getting daily prices: Status {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error fetching daily prices: {e}")
+        return None
+
+
+def should_central_heating_run(current_price, daily_prices):
+    """Determine if central heating should be running based on price ranking.
+    
+    Logic:
+    - If current price < PRICE_ALWAYS_ON_THRESHOLD: always return True (heating ON)
+    - Otherwise: return False (heating OFF) only if current quarter is among the
+      top MAX_SHUTOFF_HOURS*4 most expensive quarters of the day
+    
+    Args:
+        current_price: Current electricity price (c/kWh)
+        daily_prices: List of all prices for today
+    
+    Returns:
+        tuple: (should_run: bool, reason: str)
+    """
+    # If price is cheap enough, always keep heating on
+    if current_price < PRICE_ALWAYS_ON_THRESHOLD:
+        return True, f"Price {current_price:.2f} c/kWh < threshold {PRICE_ALWAYS_ON_THRESHOLD:.2f} c/kWh (always on)"
+    
+    if not daily_prices or len(daily_prices) == 0:
+        logger.warning("No daily prices available, defaulting to heating ON")
+        return True, "No price data available"
+    
+    # Calculate how many quarters to shut off (max shutoff hours * 4 quarters per hour)
+    max_shutoff_quarters = int(MAX_SHUTOFF_HOURS * 4)
+    
+    # Sort prices to find the most expensive quarters
+    sorted_prices = sorted(daily_prices, reverse=True)  # Highest first
+    
+    # Get the threshold price (the Nth most expensive quarter)
+    if max_shutoff_quarters < len(sorted_prices):
+        shutoff_threshold = sorted_prices[max_shutoff_quarters - 1]
+    else:
+        # If we want to shut off more quarters than exist, use the minimum price
+        shutoff_threshold = min(daily_prices)
+    
+    # Check if current price is in the top N most expensive
+    # We need to be careful with equal prices - count how many prices are >= current
+    expensive_quarters_count = sum(1 for p in daily_prices if p >= current_price)
+    
+    if expensive_quarters_count <= max_shutoff_quarters and current_price >= shutoff_threshold:
+        # Current quarter is in the top-N most expensive
+        rank = expensive_quarters_count
+        return False, f"In top-{max_shutoff_quarters} expensive quarters (rank ~{rank}, price {current_price:.2f} c/kWh)"
+    else:
+        # Not in the most expensive quarters
+        return True, f"Not in top-{max_shutoff_quarters} expensive quarters (price {current_price:.2f} c/kWh, threshold {shutoff_threshold:.2f} c/kWh)"
+
+
+def control_central_heating(should_run):
+    """Control the central heating switch.
+    
+    NOTE: The switch is inverted - when switch is ON, central heating is OFF (blocked).
+    
+    Args:
+        should_run: True if central heating should run (switch OFF), False if heating should be blocked (switch ON)
+    """
+    if not CENTRAL_HEATING_SHUTOFF_SWITCH:
+        return  # Central heating control not configured
+    
+    try:
+        service_data = {
+            "entity_id": CENTRAL_HEATING_SHUTOFF_SWITCH
+        }
+        # INVERTED: Turn switch OFF to allow heating, ON to block heating
+        service_name = "turn_off" if should_run else "turn_on"
+        response = requests.post(
+            f"{HA_URL}/api/services/switch/{service_name}",
+            headers=headers,
+            json=service_data,
+            timeout=5
+        )
+
+        if 200 <= response.status_code < 300:
+            # Service accepted — verify the switch state (retry a few times)
+            # INVERTED: expect OFF when heating should run, ON when blocked
+            expected_state = "off" if should_run else "on"
+            for attempt in range(10):
+                try:
+                    # small backoff
+                    time.sleep(0.5 if attempt == 0 else 1)
+                    s = requests.get(f"{HA_URL}/api/states/{CENTRAL_HEATING_SHUTOFF_SWITCH}", headers=headers, timeout=5)
+                    if s.status_code == 200:
+                        state = s.json().get("state")
+                        if state == expected_state:
+                            heating_status = "RUNNING (switch off)" if should_run else "BLOCKED (switch on)"
+                            logger.info(f"Central heating {heating_status} (confirmed)")
+                            return True
+                    elif s.status_code == 404:
+                        # Entity not found — probably wrong entity id
+                        logger.error(f"Central heating entity '{CENTRAL_HEATING_SHUTOFF_SWITCH}' not found in Home Assistant (404). Please verify CENTRAL_HEATING_SHUTOFF_SWITCH in .env")
+                        return False
+                except Exception as e:
+                    pass  # Retry
+
+            # Service accepted but state not confirmed — warn but return success
+            logger.warning(f"Central heating service accepted but state not confirmed (expected: {expected_state})")
+            return True
+        else:
+            logger.error(f"Error controlling central heating: Status {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Error controlling central heating: {e}")
+        return False
+
+
 def run_control():
     """Execute one temperature control cycle."""
     logger.info("=" * 60)
@@ -275,12 +414,51 @@ def run_control():
             logger.info("  → HEAT OFF (current ≥ target)")
         
         # Apply control
-        logger.info("Applying control...")
+        logger.info("Applying room temperature control...")
         control_heating(should_heat)
         
         logger.info("=" * 60)
-        logger.info("Temperature control executed successfully!")
+        logger.info("Room temperature control executed successfully!")
         logger.info("=" * 60)
+        
+        # Central heating control (if configured)
+        if CENTRAL_HEATING_SHUTOFF_SWITCH:
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("Central Heating Control")
+            logger.info("=" * 60)
+            
+            # Get all daily prices for ranking
+            logger.info("Fetching daily price data for ranking...")
+            daily_prices = get_daily_prices()
+            
+            if daily_prices:
+                logger.info(f"Retrieved {len(daily_prices)} quarter-hourly prices")
+                logger.info(f"Price range: {min(daily_prices):.2f} - {max(daily_prices):.2f} c/kWh")
+                logger.info(f"Configuration: Max {MAX_SHUTOFF_HOURS}h shutoff, Always-on threshold: {PRICE_ALWAYS_ON_THRESHOLD:.2f} c/kWh")
+                
+                # Determine if central heating should run
+                should_run, reason = should_central_heating_run(current_price, daily_prices)
+                
+                logger.info("Central Heating Decision:")
+                logger.info(f"  Current price: {current_price:.2f} c/kWh")
+                logger.info(f"  Reason: {reason}")
+                if should_run:
+                    logger.info("  → CENTRAL HEATING RUNNING (control switch will be OFF)")
+                else:
+                    logger.info("  → CENTRAL HEATING BLOCKED (control switch will be ON - shutoff during expensive period)")
+                
+                # Apply central heating control
+                logger.info("Applying central heating control...")
+                control_central_heating(should_run)
+                
+                logger.info("=" * 60)
+                logger.info("Central heating control executed successfully!")
+                logger.info("=" * 60)
+            else:
+                logger.warning("Could not retrieve daily prices for central heating control")
+                logger.info("=" * 60)
+        
     else:
         if current_price is None:
             logger.error("Failed to get electricity price.")
