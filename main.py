@@ -1,10 +1,20 @@
 import requests
 import json
 import os
+import logging
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
 HA_URL = os.getenv("HA_URL", "https://ha.ketunmetsa.fi")
@@ -55,15 +65,15 @@ def get_base_temperature():
             if response.status_code == 200:
                 data = response.json()
                 temp = float(data['state'])
-                print(f"✓ Base temperature from HA ({BASE_TEMPERATURE_INPUT}): {temp}°C")
+                logger.info(f"Base temperature from HA ({BASE_TEMPERATURE_INPUT}): {temp}°C")
                 return temp
             else:
-                print(f"⚠ Warning: Could not read {BASE_TEMPERATURE_INPUT}, using fallback")
+                logger.warning(f"Could not read {BASE_TEMPERATURE_INPUT}, using fallback")
         except Exception as e:
-            print(f"⚠ Warning: Error reading base temperature from HA: {e}")
+            logger.warning(f"Error reading base temperature from HA: {e}")
     
     # Use fallback value
-    print(f"✓ Base temperature (fallback): {BASE_TEMPERATURE_FALLBACK}°C")
+    logger.info(f"Base temperature (fallback): {BASE_TEMPERATURE_FALLBACK}°C")
     return BASE_TEMPERATURE_FALLBACK
 
 
@@ -80,10 +90,10 @@ def get_current_price():
             current_price = float(data['state'])
             return current_price
         else:
-            print(f"Error getting price: Status {response.status_code}")
+            logger.error(f"Error getting price: Status {response.status_code}")
             return None
     except Exception as e:
-        print(f"Error fetching price: {e}")
+        logger.error(f"Error fetching price: {e}")
         return None
 
 
@@ -100,10 +110,10 @@ def get_current_temperature():
             current_temp = float(data['state'])
             return current_temp
         else:
-            print(f"Error getting temperature: Status {response.status_code}")
+            logger.error(f"Error getting temperature: Status {response.status_code}")
             return None
     except Exception as e:
-        print(f"Error fetching temperature: {e}")
+        logger.error(f"Error fetching temperature: {e}")
         return None
 
 
@@ -150,13 +160,13 @@ def control_heating(should_heat):
         
         if response.status_code == 200:
             status = "ON" if should_heat else "OFF"
-            print(f"✓ Heating switched {status}")
+            logger.info(f"Heating switched {status}")
             return True
         else:
-            print(f"✗ Error controlling heating: Status {response.status_code}")
+            logger.error(f"Error controlling heating: Status {response.status_code}")
             return False
     except Exception as e:
-        print(f"✗ Error controlling heating: {e}")
+        logger.error(f"Error controlling heating: {e}")
         return False
 
 
@@ -189,44 +199,44 @@ def update_setpoint_in_ha(setpoint_value):
         )
 
         if 200 <= response.status_code < 300:
-            print(f"✓ Published setpoint to HA ({SETPOINT_OUTPUT}): {setpoint_value}°C")
+            logger.info(f"Published setpoint to HA ({SETPOINT_OUTPUT}): {setpoint_value}°C")
             return True
         else:
-            print(f"⚠ Warning: Could not publish setpoint to HA: Status {response.status_code}")
+            logger.warning(f"Could not publish setpoint to HA: Status {response.status_code}")
             return False
     except Exception as e:
-        print(f"⚠ Warning: Error publishing setpoint in HA: {e}")
+        logger.warning(f"Error publishing setpoint in HA: {e}")
         return False
 
 
 # Main execution
-print("=" * 60)
-print("Electricity Price-Based Temperature Control System")
-print("=" * 60)
+logger.info("=" * 60)
+logger.info("Electricity Price-Based Temperature Control System")
+logger.info("=" * 60)
 
 # Get base temperature
-print(f"\nFetching base temperature setpoint...")
+logger.info("Fetching base temperature setpoint...")
 base_temperature = get_base_temperature()
 
 # Get current electricity price
-print(f"\nFetching current electricity price from {PRICE_SENSOR}...")
+logger.info(f"Fetching current electricity price from {PRICE_SENSOR}...")
 current_price = get_current_price()
 
 # Get current temperature
-print(f"Fetching current temperature from {TEMPERATURE_SENSOR}...")
+logger.info(f"Fetching current temperature from {TEMPERATURE_SENSOR}...")
 current_temperature = get_current_temperature()
 
 if current_price is not None and current_temperature is not None:
-    print(f"\n✓ Current electricity price: {current_price} c/kWh")
-    print(f"✓ Current temperature: {current_temperature}°C")
+    logger.info(f"Current electricity price: {current_price} c/kWh")
+    logger.info(f"Current temperature: {current_temperature}°C")
     
     # Calculate target temperature
     setpoint_temp, adjustment = get_setpoint_temperature(current_price, base_temperature)
     
-    print(f"\nTemperature Calculation:")
-    print(f"  Base temperature: {base_temperature}°C")
-    print(f"  Price adjustment: {adjustment:+.2f}°C")
-    print(f"  → Target setpoint: {setpoint_temp}°C")
+    logger.info("Temperature Calculation:")
+    logger.info(f"  Base temperature: {base_temperature}°C")
+    logger.info(f"  Price adjustment: {adjustment:+.2f}°C")
+    logger.info(f"  → Target setpoint: {setpoint_temp}°C")
     
     # Update setpoint in HA
     update_setpoint_in_ha(setpoint_temp)
@@ -235,26 +245,26 @@ if current_price is not None and current_temperature is not None:
     should_heat = current_temperature < setpoint_temp
     temp_diff = setpoint_temp - current_temperature
     
-    print(f"\nControl Decision:")
-    print(f"  Current: {current_temperature}°C")
-    print(f"  Target:  {setpoint_temp}°C")
-    print(f"  Difference: {temp_diff:+.2f}°C")
+    logger.info("Control Decision:")
+    logger.info(f"  Current: {current_temperature}°C")
+    logger.info(f"  Target:  {setpoint_temp}°C")
+    logger.info(f"  Difference: {temp_diff:+.2f}°C")
     if should_heat:
-        print(f"  → HEAT ON (current < target)")
+        logger.info("  → HEAT ON (current < target)")
     else:
-        print(f"  → HEAT OFF (current ≥ target)")
+        logger.info("  → HEAT OFF (current ≥ target)")
     
     # Apply control
-    print(f"\nApplying control...")
+    logger.info("Applying control...")
     control_heating(should_heat)
     
-    print("\n" + "=" * 60)
-    print("Temperature control executed successfully!")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Temperature control executed successfully!")
+    logger.info("=" * 60)
 else:
     if current_price is None:
-        print("\n✗ Failed to get electricity price.")
+        logger.error("Failed to get electricity price.")
     if current_temperature is None:
-        print("\n✗ Failed to get current temperature.")
-    print("Aborting temperature control.")
-    print("=" * 60)
+        logger.error("Failed to get current temperature.")
+    logger.error("Aborting temperature control.")
+    logger.info("=" * 60)
