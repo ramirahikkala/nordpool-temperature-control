@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  temperature-controller:
+    build: .
+    container_name: ha-temperature-controller
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Helsinki
+    # Run every 15 minutes using cron-like schedule
+    command: >
+      sh -c "
+        while true; do
+          echo '[$(date)] Running temperature control...'
+          uv run main.py
+          echo '[$(date)] Waiting 15 minutes until next run...'
+          sleep 900
+        done
+      "
