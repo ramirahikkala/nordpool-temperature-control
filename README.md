@@ -24,9 +24,17 @@ input_number:
     step: 0.5
     unit_of_measurement: "°C"
     icon: mdi:thermometer
+  
+# `heating_base_temperature` is the only input required here. The calculated
+# target setpoint (base + price adjustment) is published by this script to a
+# sensor entity in Home Assistant (see `SETPOINT_OUTPUT` in the .env file).
 ```
 
-After adding, restart Home Assistant and the input_number will be available at `input_number.heating_base_temperature`.
+**Note:** 
+- `heating_base_temperature` is your desired base temperature (INPUT - you control this)
+ - Calculated setpoint is published to the entity configured in `SETPOINT_OUTPUT` (OUTPUT - automatically updated by the script)
+
+After adding, restart Home Assistant.
 
 ### Setup Environment Variables
 
@@ -50,6 +58,7 @@ SWITCH_ENTITY=switch.shelly1minig3_5432044efb74
 # Temperature Control Settings
 BASE_TEMPERATURE=21.0  # Fallback if input_number not used
 BASE_TEMPERATURE_INPUT=input_number.heating_base_temperature  # Optional
+SETPOINT_OUTPUT=sensor.heating_target_setpoint  # Optional output sensor name (read-only)
 
 PRICE_LOW_THRESHOLD=10.0
 PRICE_HIGH_THRESHOLD=20.0

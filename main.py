@@ -19,6 +19,7 @@ BASE_TEMPERATURE_INPUT = os.getenv("BASE_TEMPERATURE_INPUT")  # Optional input_n
 PRICE_SENSOR = os.getenv("PRICE_SENSOR", "sensor.nordpool_kwh_fi_eur_3_10_0255")
 SWITCH_ENTITY = os.getenv("SWITCH_ENTITY", "switch.shelly1minig3_5432044efb74")
 TEMPERATURE_SENSOR = os.getenv("TEMPERATURE_SENSOR")  # Current temperature sensor
+SETPOINT_OUTPUT = os.getenv("SETPOINT_OUTPUT")  # Optional output to write setpoint
 
 if not TEMPERATURE_SENSOR:
     raise ValueError("TEMPERATURE_SENSOR environment variable is required")
@@ -159,6 +160,45 @@ def control_heating(should_heat):
         return False
 
 
+def update_setpoint_in_ha(setpoint_value):
+    """Publish the calculated setpoint to Home Assistant as a read-only sensor.
+
+    We use the REST states API to create/update a sensor entity (for example
+    `sensor.heating_target_setpoint`). This keeps the value visible in HA but
+    not editable by users in the UI.
+    """
+    if not SETPOINT_OUTPUT:
+        return False  # Skip if not configured
+
+    try:
+        # Prepare payload for the states API
+        payload = {
+            "state": str(setpoint_value),
+            "attributes": {
+                "unit_of_measurement": "°C",
+                "friendly_name": "Calculated Heating Setpoint",
+                "source": "price_based_controller"
+            }
+        }
+
+        response = requests.post(
+            f"{HA_URL}/api/states/{SETPOINT_OUTPUT}",
+            headers=headers,
+            json=payload,
+            timeout=5
+        )
+
+        if 200 <= response.status_code < 300:
+            print(f"✓ Published setpoint to HA ({SETPOINT_OUTPUT}): {setpoint_value}°C")
+            return True
+        else:
+            print(f"⚠ Warning: Could not publish setpoint to HA: Status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"⚠ Warning: Error publishing setpoint in HA: {e}")
+        return False
+
+
 # Main execution
 print("=" * 60)
 print("Electricity Price-Based Temperature Control System")
@@ -187,6 +227,9 @@ if current_price is not None and current_temperature is not None:
     print(f"  Base temperature: {base_temperature}°C")
     print(f"  Price adjustment: {adjustment:+.2f}°C")
     print(f"  → Target setpoint: {setpoint_temp}°C")
+    
+    # Update setpoint in HA
+    update_setpoint_in_ha(setpoint_temp)
     
     # Decision logic: heat if current temperature is below target setpoint
     should_heat = current_temperature < setpoint_temp
