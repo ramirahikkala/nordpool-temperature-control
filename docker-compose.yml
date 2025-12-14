@@ -9,13 +9,24 @@ services:
       - .env
     environment:
       - TZ=Europe/Helsinki
-    # Run every 15 minutes using cron-like schedule
+    # Run at exact 15-minute intervals (:00, :15, :30, :45)
     command: >
       sh -c "
         while true; do
-          echo '[$(date)] Running temperature control...'
+          # Calculate seconds until next 15-minute mark
+          CURRENT_MIN=$$(date +%M)
+          CURRENT_SEC=$$(date +%S)
+          NEXT_MIN=$$(( (CURRENT_MIN / 15 + 1) * 15 ))
+          if [ $$NEXT_MIN -ge 60 ]; then
+            NEXT_MIN=0
+          fi
+          WAIT_MIN=$$(( (NEXT_MIN - CURRENT_MIN + 60) % 60 ))
+          WAIT_SEC=$$(( WAIT_MIN * 60 - CURRENT_SEC ))
+          
+          echo \"[$$(date)] Waiting $$WAIT_SEC seconds until next 15-minute mark...\"
+          sleep $$WAIT_SEC
+          
+          echo \"[$$(date)] Running temperature control...\"
           uv run main.py
-          echo '[$(date)] Waiting 15 minutes until next run...'
-          sleep 900
         done
       "
