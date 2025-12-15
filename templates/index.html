@@ -352,7 +352,13 @@
             // Fetch central heating history for annotations
             let annotations = {};
             try {
-                const response = await fetch('/api/history?hours=24');
+                // Calculate hours since start of today
+                const now = new Date();
+                const startOfDay = new Date(now);
+                startOfDay.setHours(0, 0, 0, 0);
+                const hoursFromMidnight = (now - startOfDay) / (1000 * 60 * 60);
+                
+                const response = await fetch(`/api/history?hours=${Math.ceil(hoursFromMidnight) + 1}`);
                 if (response.ok) {
                     const historyData = await response.json();
                     const entities = historyData.entities;
@@ -362,12 +368,18 @@
                         ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
                         : [];
                     
+                    // Filter to only include today's data
+                    const todayData = centralHeatingData.filter(point => {
+                        const time = new Date(point.timestamp);
+                        return time >= startOfDay;
+                    });
+                    
                     // Create annotations for blocked periods (when switch is ON, heating is blocked)
                     let annotationIndex = 0;
                     let blockStart = null;
                     
-                    for (let i = 0; i < centralHeatingData.length; i++) {
-                        const point = centralHeatingData[i];
+                    for (let i = 0; i < todayData.length; i++) {
+                        const point = todayData[i];
                         const time = new Date(point.timestamp);
                         const state = point.value;
                         
