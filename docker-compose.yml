@@ -18,10 +18,11 @@ services:
     environment:
       - TZ=Europe/Helsinki
       - WEB_PORT=5000
+      - PYTHONPATH=/app
     networks:
       - caddy-proxy
     working_dir: /app
-    command: uv run gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --chdir /app web_app:app
+    command: sh -c "cd /app && uv run --with gunicorn gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 web_app:app"
 
 networks:
   caddy-proxy:
