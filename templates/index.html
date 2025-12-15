@@ -242,9 +242,16 @@
             </div>
             
             <div class="card">
-                <h2>📊 Sähkönhinta (24 h)</h2>
+                <h2>📊 Sähkönhinta tänään (24 h)</h2>
                 <div class="chart-container">
                     <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>📊 Sähkönhinta eilen (24 h)</h2>
+                <div class="chart-container">
+                    <canvas id="yesterdayPriceChart"></canvas>
                 </div>
             </div>
             
@@ -259,6 +266,7 @@
     
     <script>
         let priceChart = null;
+        let yesterdayPriceChart = null;
         let historyChart = null;
         
         async function loadData() {
@@ -313,6 +321,11 @@
                 // Update price chart with central heating info
                 if (data.price.daily_prices) {
                     updatePriceChart(data.price.daily_prices, data.price.current);
+                }
+                
+                // Update yesterday price chart
+                if (data.price.yesterday_prices) {
+                    updateYesterdayPriceChart(data.price.yesterday_prices);
                 }
                 
                 // Load historical data
@@ -427,6 +440,140 @@
                         data: prices,
                         backgroundColor: 'rgba(0, 123, 255, 0.6)',
                         borderColor: '#007bff',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        annotation: {
+                            annotations: annotations
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toFixed(2) + ' c/kWh';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 24,
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function updateYesterdayPriceChart(prices) {
+            const ctx = document.getElementById('yesterdayPriceChart').getContext('2d');
+            
+            // Create labels for every 15 minutes (quarter hours)
+            const labels = [];
+            for (let i = 0; i < prices.length; i++) {
+                const hour = Math.floor(i / 4);
+                const minute = (i % 4) * 15;
+                labels.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
+            }
+            
+            if (yesterdayPriceChart) {
+                yesterdayPriceChart.destroy();
+            }
+            
+            // Fetch yesterday's central heating history for annotations
+            let annotations = {};
+            try {
+                // Get data from 48 hours ago to 24 hours ago
+                const response = await fetch('/api/history?hours=48');
+                if (response.ok) {
+                    const historyData = await response.json();
+                    const entities = historyData.entities;
+                    
+                    // Find central heating data
+                    const centralHeatingData = Object.keys(entities).find(k => k.includes('5432045dd3f0')) 
+                        ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
+                        : [];
+                    
+                    // Filter to only include yesterday's data (24-48h ago)
+                    const now = new Date();
+                    const startOfYesterday = new Date(now);
+                    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+                    startOfYesterday.setHours(0, 0, 0, 0);
+                    const endOfYesterday = new Date(startOfYesterday);
+                    endOfYesterday.setHours(23, 59, 59, 999);
+                    
+                    const yesterdayData = centralHeatingData.filter(point => {
+                        const time = new Date(point.timestamp);
+                        return time >= startOfYesterday && time <= endOfYesterday;
+                    });
+                    
+                    // Create annotations for blocked periods
+                    let annotationIndex = 0;
+                    let blockStart = null;
+                    
+                    for (let i = 0; i < yesterdayData.length; i++) {
+                        const point = yesterdayData[i];
+                        const time = new Date(point.timestamp);
+                        const state = point.value;
+                        
+                        if (state === 'on' && blockStart === null) {
+                            blockStart = time;
+                        } else if (state === 'off' && blockStart !== null) {
+                            annotations[`block${annotationIndex}`] = {
+                                type: 'box',
+                                xMin: blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15),
+                                xMax: time.getHours() * 4 + Math.floor(time.getMinutes() / 15),
+                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                borderColor: 'rgba(220, 53, 69, 0.3)',
+                                borderWidth: 1
+                            };
+                            annotationIndex++;
+                            blockStart = null;
+                        }
+                    }
+                    
+                    // If day ended in blocked state
+                    if (blockStart !== null) {
+                        annotations[`block${annotationIndex}`] = {
+                            type: 'box',
+                            xMin: blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15),
+                            xMax: 95, // End of day (23:45)
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderColor: 'rgba(220, 53, 69, 0.3)',
+                            borderWidth: 1
+                        };
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch yesterday central heating history:', error);
+            }
+            
+            yesterdayPriceChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Hinta (c/kWh)',
+                        data: prices,
+                        backgroundColor: 'rgba(108, 117, 125, 0.6)',
+                        borderColor: '#6c757d',
                         borderWidth: 1
                     }]
                 },
