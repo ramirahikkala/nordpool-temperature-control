@@ -730,6 +730,21 @@
                     x: new Date(p.timestamp),
                     y: (typeof p.value === 'number') ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
                 })).filter(p => p.y !== null);
+                
+                // Extend last setpoint value to current time
+                // (setpoint updates every 15 min but HA may not record if value unchanged)
+                if (setpointPoints.length > 0 && tempPoints.length > 0) {
+                    const lastSetpoint = setpointPoints[setpointPoints.length - 1];
+                    const latestTemp = tempPoints[tempPoints.length - 1];
+                    
+                    // If temperature data extends beyond last setpoint, extend setpoint to match
+                    if (latestTemp.x > lastSetpoint.x) {
+                        setpointPoints.push({
+                            x: latestTemp.x,
+                            y: lastSetpoint.y
+                        });
+                    }
+                }
             }
             // If no setpoint data available from HA, setpointPoints stays empty
             
