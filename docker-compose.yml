@@ -22,7 +22,7 @@ services:
     networks:
       - caddy-proxy
     working_dir: /app
-    command: sh -c "cd /app && uv run --with gunicorn gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 web_app:app"
+    command: sh -c ". /app/.venv/bin/activate && gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 web_app:app"
 
 networks:
   caddy-proxy:
