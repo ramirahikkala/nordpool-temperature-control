@@ -268,6 +268,7 @@
         let priceChart = null;
         let yesterdayPriceChart = null;
         let historyChart = null;
+        let currentStatus = null;
         
         async function loadData() {
             try {
@@ -278,6 +279,9 @@
                 if (!response.ok) throw new Error('Failed to fetch status');
                 
                 const data = await response.json();
+                
+                // Store globally for history chart calculations
+                currentStatus = data;
                 
                 // Update temperature
                 document.getElementById('temp-current').textContent = data.temperature.current.toFixed(2);
@@ -533,13 +537,19 @@
                         const time = new Date(point.timestamp);
                         const state = point.value;
                         
+                        // Calculate quarter-hour index for yesterday (0-95)
+                        // Use local time to match chart labels
+                        const hour = time.getHours();
+                        const minute = time.getMinutes();
+                        const quarterIndex = hour * 4 + Math.floor(minute / 15);
+                        
                         if (state === 'on' && blockStart === null) {
-                            blockStart = time;
+                            blockStart = quarterIndex;
                         } else if (state === 'off' && blockStart !== null) {
                             annotations[`block${annotationIndex}`] = {
                                 type: 'box',
-                                xMin: blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15),
-                                xMax: time.getHours() * 4 + Math.floor(time.getMinutes() / 15),
+                                xMin: blockStart,
+                                xMax: quarterIndex,
                                 backgroundColor: 'rgba(220, 53, 69, 0.1)',
                                 borderColor: 'rgba(220, 53, 69, 0.3)',
                                 borderWidth: 1
@@ -553,7 +563,7 @@
                     if (blockStart !== null) {
                         annotations[`block${annotationIndex}`] = {
                             type: 'box',
-                            xMin: blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15),
+                            xMin: blockStart,
                             xMax: 95, // End of day (23:45)
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
@@ -707,19 +717,64 @@
                 historyChart.destroy();
             }
             
+            // Get base temperature for baseline chart
+            const baseTemp = currentStatus?.temperature?.base || 20;
+            
+            // Get setpoint history from Home Assistant (no client-side calculation)
+            const setpointEntity = historyData.setpoint_entity || null;
+            let setpointPoints = [];
+
+            if (setpointEntity && entities[setpointEntity]) {
+                const spData = entities[setpointEntity];
+                setpointPoints = spData.map(p => ({
+                    x: new Date(p.timestamp),
+                    y: (typeof p.value === 'number') ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
+                })).filter(p => p.y !== null);
+            }
+            // If no setpoint data available from HA, setpointPoints stays empty
+            
+            // Create base temperature line (constant)
+            const baseTempPoints = tempPoints.map(point => ({
+                x: point.x,
+                y: baseTemp
+            }));
+            
             historyChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     datasets: [
                         {
-                            label: 'Lämpötila (°C)',
+                            label: 'Peruslämpötila',
+                            data: baseTempPoints,
+                            borderColor: 'rgba(108, 117, 125, 0.4)',
+                            backgroundColor: 'rgba(108, 117, 125, 0.05)',
+                            yAxisID: 'y',
+                            borderDash: [5, 5],
+                            tension: 0,
+                            pointRadius: 0,
+                            borderWidth: 2,
+                            fill: false
+                        },
+                        {
+                            label: 'Asetusarvo',
+                            data: setpointPoints,
+                            borderColor: 'rgba(255, 193, 7, 0.35)',
+                            backgroundColor: 'rgba(255, 193, 7, 0.12)',
+                            yAxisID: 'y',
+                            tension: 0.1,
+                            pointRadius: 0,
+                            borderWidth: 1,
+                            fill: true
+                        },
+                        {
+                            label: 'Lämpötila',
                             data: tempPoints,
                             borderColor: '#007bff',
                             backgroundColor: 'rgba(0, 123, 255, 0.1)',
                             yAxisID: 'y',
                             tension: 0.1,
                             pointRadius: 1,
-                            borderWidth: 2
+                            borderWidth: 3
                         }
                     ]
                 },
@@ -758,10 +813,17 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    if (context.dataset.label === 'Lämpötila (°C)') {
-                                        return 'Lämpötila: ' + context.parsed.y.toFixed(2) + ' °C';
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y.toFixed(2);
+                                    
+                                    if (label === 'Lämpötila') {
+                                        return 'Lämpötila: ' + value + ' °C';
+                                    } else if (label === 'Asetusarvo') {
+                                        return 'Asetusarvo: ' + value + ' °C';
+                                    } else if (label === 'Peruslämpötila') {
+                                        return 'Peruslämpötila: ' + value + ' °C';
                                     }
-                                    return context.dataset.label;
+                                    return label + ': ' + value + ' °C';
                                 }
                             }
                         }

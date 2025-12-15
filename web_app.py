@@ -30,6 +30,7 @@ from main import (
     PRICE_LOW_THRESHOLD,
     PRICE_HIGH_THRESHOLD,
     TEMP_VARIATION,
+    SETPOINT_OUTPUT,
 )
 
 load_dotenv()
@@ -170,7 +171,8 @@ def api_status():
                 "price_always_on_threshold": PRICE_ALWAYS_ON_THRESHOLD,
                 "price_low_threshold": PRICE_LOW_THRESHOLD,
                 "price_high_threshold": PRICE_HIGH_THRESHOLD,
-                "temp_variation": TEMP_VARIATION
+                "temp_variation": TEMP_VARIATION,
+                "setpoint_output": SETPOINT_OUTPUT if 'SETPOINT_OUTPUT' in globals() else None
             }
         })
     except Exception as e:
@@ -237,6 +239,10 @@ def api_history():
             entities.append(CENTRAL_HEATING_SHUTOFF_SWITCH)
         if PRICE_SENSOR:
             entities.append(PRICE_SENSOR)
+        # Include calculated setpoint output entity if configured
+        if 'SETPOINT_OUTPUT' in globals() and SETPOINT_OUTPUT:
+            if SETPOINT_OUTPUT not in entities:
+                entities.append(SETPOINT_OUTPUT)
         
         # Query HA history API
         # Format: /api/history/period/<start_time>?filter_entity_id=entity1,entity2
@@ -255,7 +261,8 @@ def api_history():
             "start_time": start_time_iso,
             "end_time": datetime.now().isoformat(),
             "hours": hours,
-            "entities": {}
+            "entities": {},
+            "setpoint_entity": SETPOINT_OUTPUT if 'SETPOINT_OUTPUT' in globals() else None
         }
         
         # HA returns an array where each element is the history for one entity
