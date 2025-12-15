@@ -48,6 +48,9 @@ CENTRAL_HEATING_SHUTOFF_SWITCH = os.getenv("CENTRAL_HEATING_SHUTOFF_SWITCH")  # 
 MAX_SHUTOFF_HOURS = float(os.getenv("MAX_SHUTOFF_HOURS", "6.0"))  # Max hours per day to turn off heating
 PRICE_ALWAYS_ON_THRESHOLD = float(os.getenv("PRICE_ALWAYS_ON_THRESHOLD", "5.0"))  # Below this price, always keep heating on
 
+# Healthcheck/watchdog configuration
+HEALTHCHECK_URL = os.getenv("HEALTHCHECK_URL")  # Optional healthcheck ping URL (e.g., from healthchecks.io)
+
 # Headers for authentication
 headers = {
     "Authorization": f"Bearer {API_TOKEN}",
@@ -231,6 +234,27 @@ def update_setpoint_in_ha(setpoint_value):
     except Exception as e:
         logger.warning(f"Error publishing setpoint in HA: {e}")
         return False
+
+
+def ping_healthcheck(success=True):
+    """Ping healthcheck service to indicate the script is running.
+    
+    Args:
+        success: True if control cycle completed successfully, False if it failed
+    """
+    if not HEALTHCHECK_URL:
+        return  # Healthcheck not configured
+    
+    try:
+        # Append /fail to URL if control cycle failed
+        url = HEALTHCHECK_URL if success else f"{HEALTHCHECK_URL}/fail"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            logger.debug(f"Healthcheck ping sent successfully ({'success' if success else 'failure'})")
+        else:
+            logger.warning(f"Healthcheck ping returned status {response.status_code}")
+    except Exception as e:
+        logger.warning(f"Failed to ping healthcheck: {e}")
 
 
 def get_daily_prices():
@@ -459,6 +483,9 @@ def run_control():
                 logger.warning("Could not retrieve daily prices for central heating control")
                 logger.info("=" * 60)
         
+        # Ping healthcheck to indicate successful completion
+        ping_healthcheck(success=True)
+        
     else:
         if current_price is None:
             logger.error("Failed to get electricity price.")
@@ -466,6 +493,9 @@ def run_control():
             logger.error("Failed to get current temperature.")
         logger.error("Aborting temperature control.")
         logger.info("=" * 60)
+        
+        # Ping healthcheck with failure status
+        ping_healthcheck(success=False)
 
 
 if __name__ == "__main__":
