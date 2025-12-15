@@ -39,15 +39,32 @@ OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "sensor.ruuvitag_dc2d_tem
 
 
 def get_yesterday_prices():
-    """Get yesterday's prices from Nordpool sensor."""
+    """Get yesterday's prices from Nordpool sensor via history API."""
     try:
-        response = requests.get(f"{HA_URL}/api/states/{PRICE_SENSOR}", headers=headers, timeout=5)
+        from datetime import timedelta
+        # Get yesterday at noon (to ensure we're in the middle of the day)
+        yesterday_noon = (datetime.now() - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+        
+        # Query history API for a single state from yesterday
+        # The raw_today attribute from yesterday contains yesterday's full 96 prices
+        url = f"{HA_URL}/api/history/period/{yesterday_noon.isoformat()}?filter_entity_id={PRICE_SENSOR}&end_time={yesterday_noon.replace(minute=1).isoformat()}"
+        response = requests.get(url, headers=headers, timeout=10)
+        
         if response.status_code == 200:
-            data = response.json()
-            prices = data.get('attributes', {}).get('yesterday', [])
-            return prices if prices else None
+            history_data = response.json()
+            if history_data and len(history_data) > 0 and len(history_data[0]) > 0:
+                # Get the first state entry
+                state = history_data[0][0]
+                raw_today = state.get('attributes', {}).get('raw_today', [])
+                
+                if raw_today and len(raw_today) == 96:
+                    # Extract just the values from the raw_today array
+                    prices = [entry['value'] for entry in raw_today]
+                    return prices
+        
         return None
-    except Exception:
+    except Exception as e:
+        print(f"Error fetching yesterday prices: {e}")
         return None
 
 app = Flask(__name__)
