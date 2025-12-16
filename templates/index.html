@@ -242,23 +242,30 @@
             </div>
             
             <div class="card">
-                <h2>📊 Sähkönhinta tänään (24 h)</h2>
+                <h2>� Lämpötila- ja lämmityshistoria (24 h)</h2>
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>�📊 Sähkönhinta tänään (24 h)</h2>
                 <div class="chart-container">
                     <canvas id="priceChart"></canvas>
                 </div>
             </div>
             
             <div class="card">
-                <h2>📊 Sähkönhinta eilen (24 h)</h2>
+                <h2>📊 Sähkönhinta huomenna (24 h)</h2>
                 <div class="chart-container">
-                    <canvas id="yesterdayPriceChart"></canvas>
+                    <canvas id="tomorrowPriceChart"></canvas>
                 </div>
             </div>
             
             <div class="card">
-                <h2>🕐 Lämpötila- ja lämmityshistoria (24 h)</h2>
-                <div class="chart-container" style="height: 400px;">
-                    <canvas id="historyChart"></canvas>
+                <h2>� Sähkönhinta eilen (24 h)</h2>
+                <div class="chart-container">
+                    <canvas id="yesterdayPriceChart"></canvas>
                 </div>
             </div>
         </div>
@@ -266,6 +273,7 @@
     
     <script>
         let priceChart = null;
+        let tomorrowPriceChart = null;
         let yesterdayPriceChart = null;
         let historyChart = null;
         let currentStatus = null;
@@ -325,6 +333,11 @@
                 // Update price chart with central heating info
                 if (data.price.daily_prices) {
                     updatePriceChart(data.price.daily_prices, data.price.current);
+                }
+                
+                // Update tomorrow price chart
+                if (data.price.tomorrow_prices) {
+                    updateTomorrowPriceChart(data.price.tomorrow_prices);
                 }
                 
                 // Update yesterday price chart
@@ -435,6 +448,22 @@
                 console.error('Failed to fetch central heating history:', error);
             }
             
+            // Add current time marker
+            const currentIndex = now.getHours() * 4 + Math.floor(now.getMinutes() / 15);
+            annotations['currentTime'] = {
+                type: 'line',
+                xMin: currentIndex,
+                xMax: currentIndex,
+                borderColor: 'rgba(255, 99, 132, 0.8)',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                label: {
+                    display: true,
+                    content: 'Nyt',
+                    position: 'start'
+                }
+            };
+            
             priceChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -456,6 +485,69 @@
                         },
                         annotation: {
                             annotations: annotations
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toFixed(2) + ' c/kWh';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 24,
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function updateTomorrowPriceChart(prices) {
+            const ctx = document.getElementById('tomorrowPriceChart').getContext('2d');
+            
+            // Create labels for every 15 minutes (quarter hours)
+            const labels = [];
+            for (let i = 0; i < prices.length; i++) {
+                const hour = Math.floor(i / 4);
+                const minute = (i % 4) * 15;
+                labels.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
+            }
+            
+            if (tomorrowPriceChart) {
+                tomorrowPriceChart.destroy();
+            }
+            
+            tomorrowPriceChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Hinta (c/kWh)',
+                        data: prices,
+                        backgroundColor: 'rgba(40, 167, 69, 0.6)',
+                        borderColor: '#28a745',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
                         },
                         tooltip: {
                             callbacks: {

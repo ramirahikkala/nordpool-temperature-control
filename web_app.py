@@ -68,6 +68,23 @@ def get_yesterday_prices():
         print(f"Error fetching yesterday prices: {e}")
         return None
 
+
+def get_tomorrow_prices():
+    """Get tomorrow's prices from Nordpool sensor if available."""
+    try:
+        response = requests.get(f"{HA_URL}/api/states/{PRICE_SENSOR}", headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            tomorrow_valid = data.get('attributes', {}).get('tomorrow_valid', False)
+            if tomorrow_valid:
+                tomorrow = data.get('attributes', {}).get('tomorrow', [])
+                if tomorrow and len(tomorrow) == 96:
+                    return tomorrow
+        return None
+    except Exception as e:
+        print(f"Error fetching tomorrow prices: {e}")
+        return None
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for API endpoints
 
@@ -128,6 +145,7 @@ def api_status():
         # Get daily prices and central heating decision
         daily_prices = get_daily_prices()
         yesterday_prices = get_yesterday_prices()
+        tomorrow_prices = get_tomorrow_prices()
         central_heating_decision = None
         if daily_prices and CENTRAL_HEATING_SHUTOFF_SWITCH:
             should_run, reason = should_central_heating_run(current_price, daily_prices)
@@ -149,6 +167,7 @@ def api_status():
                 "current": current_price,
                 "daily_prices": daily_prices,
                 "yesterday_prices": yesterday_prices,
+                "tomorrow_prices": tomorrow_prices,
                 "daily_min": min(daily_prices) if daily_prices else None,
                 "daily_max": max(daily_prices) if daily_prices else None
             },
