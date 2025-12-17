@@ -708,10 +708,13 @@
                         const time = new Date(point.timestamp);
                         const newState = point.value;
                         
-                        // Calculate quarter-hour index for yesterday
-                        const hour = time.getHours();
-                        const minute = time.getMinutes();
-                        const quarterIndex = hour * 4 + Math.floor(minute / 15);
+                        // Calculate quarter-hour index for yesterday using local time
+                        // (timestamps are UTC but chart labels use local time)
+                        // getTimezoneOffset returns minutes as negative for UTC+X, so divide by -60 to get hours
+                        const offsetHours = -new Date().getTimezoneOffset() / 60;
+                        const localHour = time.getHours() + offsetHours;
+                        const localMinute = time.getMinutes();
+                        const quarterIndex = Math.floor(localHour) * 4 + Math.floor(localMinute / 15);
                         
                         if (newState === 'on' && currentState !== 'on') {
                             // Transition to ON (blocking starts)
