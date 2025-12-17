@@ -213,21 +213,12 @@
                         </div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Kallein hetki</div>
-                        <div class="metric-value">
-                            <span id="price-max">--</span><span class="metric-unit">c/kWh</span>
+                        <div class="metric-label">Päivän vaihteluväli</div>
+                        <div class="metric-value" style="font-size: 18px;">
+                            <span id="price-min">--</span> - <span id="price-max">--</span><span class="metric-unit">c/kWh</span>
                         </div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Halvin hetki</div>
-                        <div class="metric-value">
-                            <span id="price-min">--</span><span class="metric-unit">c/kWh</span>
-                        </div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Keskihinta</div>
-                        <div class="metric-value">
-                            <span id="price-avg">--</span><span class="metric-unit">c/kWh</span>
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            Kallein: <span id="price-max-time">--</span> | Halvin: <span id="price-min-time">--</span>
                         </div>
                     </div>
                 </div>
@@ -314,12 +305,23 @@
                 document.getElementById('price-min').textContent = data.price.daily_min ? data.price.daily_min.toFixed(2) : '--';
                 document.getElementById('price-max').textContent = data.price.daily_max ? data.price.daily_max.toFixed(2) : '--';
                 
-                // Calculate and display average price
+                // Find times for min and max prices
                 if (data.price.daily_prices && data.price.daily_prices.length > 0) {
-                    const avgPrice = data.price.daily_prices.reduce((a, b) => a + b, 0) / data.price.daily_prices.length;
-                    document.getElementById('price-avg').textContent = avgPrice.toFixed(2);
+                    const maxIndex = data.price.daily_prices.indexOf(data.price.daily_max);
+                    const minIndex = data.price.daily_prices.indexOf(data.price.daily_min);
+                    
+                    // Convert index to time (each index is 15 minutes)
+                    const formatTime = (index) => {
+                        const hour = Math.floor(index / 4);
+                        const minute = (index % 4) * 15;
+                        return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                    };
+                    
+                    document.getElementById('price-max-time').textContent = maxIndex >= 0 ? formatTime(maxIndex) : '--';
+                    document.getElementById('price-min-time').textContent = minIndex >= 0 ? formatTime(minIndex) : '--';
                 } else {
-                    document.getElementById('price-avg').textContent = '--';
+                    document.getElementById('price-max-time').textContent = '--';
+                    document.getElementById('price-min-time').textContent = '--';
                 }
                 
                 // Update room heater status
@@ -355,9 +357,14 @@
                     updatePriceChart(data.price.daily_prices, data.price.current);
                 }
                 
-                // Update tomorrow price chart
-                if (data.price.tomorrow_prices) {
+                // Update tomorrow price chart - destroy if no data
+                if (data.price.tomorrow_prices && data.price.tomorrow_prices.length > 0) {
                     updateTomorrowPriceChart(data.price.tomorrow_prices);
+                } else {
+                    if (tomorrowPriceChart) {
+                        tomorrowPriceChart.destroy();
+                        tomorrowPriceChart = null;
+                    }
                 }
                 
                 // Update yesterday price chart
