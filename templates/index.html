@@ -673,7 +673,7 @@
                         ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
                         : [];
                     
-                    // Filter to only include yesterday's data (24-48h ago)
+                    // Get yesterday's date boundaries
                     const now = new Date();
                     const startOfYesterday = new Date(now);
                     startOfYesterday.setDate(startOfYesterday.getDate() - 1);
@@ -681,48 +681,91 @@
                     const endOfYesterday = new Date(startOfYesterday);
                     endOfYesterday.setHours(23, 59, 59, 999);
                     
-                    const yesterdayData = centralHeatingData.filter(point => {
+                    // Find the state at the start of yesterday
+                    let stateAtYesterdayStart = 'off'; // Default: heating is normally OFF (blocked)
+                    for (let i = centralHeatingData.length - 1; i >= 0; i--) {
+                        const time = new Date(centralHeatingData[i].timestamp);
+                        if (time < startOfYesterday) {
+                            stateAtYesterdayStart = centralHeatingData[i].value;
+                            break;
+                        }
+                    }
+                    
+                    // Get all state changes during yesterday
+                    const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
                         return time >= startOfYesterday && time <= endOfYesterday;
                     });
                     
-                    // Create annotations for blocked periods
+                    // Create annotations for ON periods (heating blocked)
                     let annotationIndex = 0;
                     let blockStart = null;
+                    let currentState = stateAtYesterdayStart;
                     
-                    for (let i = 0; i < yesterdayData.length; i++) {
-                        const point = yesterdayData[i];
+                    // Process each state change during yesterday
+                    for (let i = 0; i < yesterdayChanges.length; i++) {
+                        const point = yesterdayChanges[i];
                         const time = new Date(point.timestamp);
-                        const state = point.value;
+                        const newState = point.value;
                         
-                        // Calculate quarter-hour index for yesterday (0-95)
-                        // Use local time to match chart labels
+                        // Calculate quarter-hour index for yesterday
                         const hour = time.getHours();
                         const minute = time.getMinutes();
                         const quarterIndex = hour * 4 + Math.floor(minute / 15);
                         
-                        if (state === 'on' && blockStart === null) {
+                        if (newState === 'on' && currentState !== 'on') {
+                            // Transition to ON (blocking starts)
                             blockStart = quarterIndex;
-                        } else if (state === 'off' && blockStart !== null) {
-                            annotations[`block${annotationIndex}`] = {
-                                type: 'box',
-                                xMin: blockStart,
-                                xMax: quarterIndex,
-                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                                borderColor: 'rgba(220, 53, 69, 0.3)',
-                                borderWidth: 1
-                            };
-                            annotationIndex++;
-                            blockStart = null;
+                        } else if (newState === 'off' && currentState === 'on') {
+                            // Transition from ON to OFF (blocking ends)
+                            if (blockStart !== null) {
+                                annotations[`block${annotationIndex}`] = {
+                                    type: 'box',
+                                    xMin: blockStart,
+                                    xMax: quarterIndex,
+                                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                    borderColor: 'rgba(220, 53, 69, 0.3)',
+                                    borderWidth: 1
+                                };
+                                annotationIndex++;
+                                blockStart = null;
+                            }
                         }
+                        currentState = newState;
                     }
                     
-                    // If day ended in blocked state
-                    if (blockStart !== null) {
+                    // If day ended while heating was blocked
+                    if (currentState === 'on' && blockStart !== null) {
                         annotations[`block${annotationIndex}`] = {
                             type: 'box',
                             xMin: blockStart,
                             xMax: 95, // End of day (23:45)
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderColor: 'rgba(220, 53, 69, 0.3)',
+                            borderWidth: 1
+                        };
+                    }
+                    // If day started while heating was blocked
+                    else if (stateAtYesterdayStart === 'on') {
+                        const firstChangeIdx = yesterdayChanges.length > 0 ? yesterdayChanges[0] : null;
+                        const endQuarter = firstChangeIdx ? firstChangeIdx.timestamp : 95;
+                        
+                        // Find the end of the blocking period (when it transitions to OFF)
+                        let blockEndQuarter = 95; // Default: end of day
+                        for (let i = 0; i < yesterdayChanges.length; i++) {
+                            if (yesterdayChanges[i].value === 'off') {
+                                const time = new Date(yesterdayChanges[i].timestamp);
+                                const hour = time.getHours();
+                                const minute = time.getMinutes();
+                                blockEndQuarter = hour * 4 + Math.floor(minute / 15);
+                                break;
+                            }
+                        }
+                        
+                        annotations[`block${annotationIndex}`] = {
+                            type: 'box',
+                            xMin: 0, // Start of day
+                            xMax: blockEndQuarter,
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
                             borderWidth: 1
