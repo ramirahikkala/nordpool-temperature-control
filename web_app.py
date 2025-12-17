@@ -62,7 +62,12 @@ def get_yesterday_prices():
             if history_data and len(history_data) > 0 and len(history_data[0]) > 0:
                 # Get the first state entry
                 state = history_data[0][0]
-                raw_today = state.get('attributes', {}).get('raw_today', [])
+                
+                # Debug: Log all available attributes
+                attrs = state.get('attributes', {})
+                print(f"DEBUG: Available attributes at {state.get('last_changed')}: {list(attrs.keys())}")
+                
+                raw_today = attrs.get('raw_today', [])
                 
                 if raw_today and len(raw_today) == 96:
                     # Extract just the values from the raw_today array
@@ -87,10 +92,12 @@ def get_yesterday_prices():
                     
                     # Rotate the array to align with local time
                     # The array is indexed by UTC hour, but we want it indexed by local hour
-                    # Shift RIGHT by the timezone offset to move UTC midnight to local midnight position
+                    # For UTC+2: UTC 00:00 should map to local index 8 (02:00 local time)
+                    # So we need to rotate RIGHT (move items from end to beginning)
                     if tz_offset_hours != 0:
                         shift = (int(tz_offset_hours) * 4) % 96  # Convert hours to quarter-hours
-                        prices = prices[shift:] + prices[:shift]
+                        # Right rotation: prices[-shift:] + prices[:-shift]
+                        prices = prices[-shift:] + prices[:-shift]
                     
                     # Debug: Check max price after rotation
                     max_index_after = prices.index(max_price)
