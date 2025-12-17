@@ -80,12 +80,27 @@ def get_yesterday_prices():
                     offset = aware_midnight.utcoffset()
                     tz_offset_hours = offset.total_seconds() / 3600
                     
+                    # Debug: Find max price and its index
+                    max_price = max(prices)
+                    max_index_before = prices.index(max_price)
+                    max_hour_before = max_index_before / 4
+                    
                     # Rotate the array to align with local time
                     # The array is indexed by UTC hour, but we want it indexed by local hour
                     # Shift RIGHT by the timezone offset to move UTC midnight to local midnight position
                     if tz_offset_hours != 0:
                         shift = (int(tz_offset_hours) * 4) % 96  # Convert hours to quarter-hours
                         prices = prices[shift:] + prices[:shift]
+                    
+                    # Debug: Check max price after rotation
+                    max_index_after = prices.index(max_price)
+                    max_hour_after = max_index_after / 4
+                    
+                    print(f"DEBUG get_yesterday_prices: tz_offset={tz_offset_hours}h, shift={shift}q")
+                    print(f"  Max price before rotation: {max_price} at index {max_index_before} (hour {max_hour_before})")
+                    print(f"  Max price after rotation:  {max_price} at index {max_index_after} (hour {max_hour_after})")
+                    print(f"  Current time local: {datetime.now()}")
+                    print(f"  State timestamp: {state.get('last_changed', 'unknown')}")
                     
                     return prices
         
