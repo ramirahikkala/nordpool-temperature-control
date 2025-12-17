@@ -687,6 +687,11 @@
                     const startOfYesterdayUTC = new Date(startOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
                     const endOfYesterdayUTC = new Date(endOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
                     
+                    console.log('Yesterday filtering (LOCAL):', startOfYesterdayLocal, endOfYesterdayLocal);
+                    console.log('Yesterday filtering (UTC):', startOfYesterdayUTC, endOfYesterdayUTC);
+                    console.log('Central heating data points:', centralHeatingData.length);
+                    centralHeatingData.forEach((p, i) => console.log(`  ${i}: ${p.timestamp} = ${p.value}`));
+                    
                     // Find the state at the start of yesterday
                     let stateAtYesterdayStart = 'off'; // Default: heating is normally OFF (blocked)
                     for (let i = centralHeatingData.length - 1; i >= 0; i--) {
@@ -700,8 +705,11 @@
                     // Get all state changes during yesterday (in UTC time)
                     const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
-                        return time >= startOfYesterdayUTC && time <= endOfYesterdayUTC;
+                        const inRange = time >= startOfYesterdayUTC && time <= endOfYesterdayUTC;
+                        console.log(`  Filter ${point.timestamp}: ${time.toISOString()} in range? ${inRange}`);
+                        return inRange;
                     });
+                    console.log('Yesterday changes:', yesterdayChanges.length);
                     
                     // Create annotations for ON periods (heating blocked)
                     let annotationIndex = 0;
