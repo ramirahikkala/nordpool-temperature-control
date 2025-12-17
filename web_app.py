@@ -69,14 +69,22 @@ def get_yesterday_prices():
                     prices = [entry['value'] for entry in raw_today]
                     
                     # Nordpool prices are indexed by UTC time, but we want them indexed by local time
-                    # Calculate the timezone offset in hours
-                    utc_offset_seconds = time.timezone if time.daylight == 0 else time.altzone
-                    tz_offset_hours = -utc_offset_seconds // 3600
+                    # Calculate local timezone offset dynamically (handles DST automatically)
+                    # Get the offset for yesterday's date (in case DST changed)
+                    from datetime import timezone, timedelta
+                    yesterday = datetime.now() - timedelta(days=1)
+                    
+                    # Create a naive datetime at midnight yesterday and compare with UTC version
+                    naive_midnight = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+                    aware_midnight = naive_midnight.replace(tzinfo=timezone.utc).astimezone()
+                    offset = aware_midnight.utcoffset()
+                    tz_offset_hours = offset.total_seconds() / 3600
                     
                     # Rotate the array to align with local time
-                    # If we're UTC+2, we need to shift the array left by 2 positions (or right by 94)
+                    # The array is indexed by UTC hour, but we want it indexed by local hour
+                    # Shift RIGHT by the timezone offset to move UTC midnight to local midnight position
                     if tz_offset_hours != 0:
-                        shift = (tz_offset_hours * 4) % 96  # Convert hours to quarter-hours
+                        shift = (int(tz_offset_hours) * 4) % 96  # Convert hours to quarter-hours
                         prices = prices[shift:] + prices[:shift]
                     
                     return prices
