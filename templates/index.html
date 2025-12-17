@@ -687,11 +687,6 @@
                     const startOfYesterdayUTC = new Date(startOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
                     const endOfYesterdayUTC = new Date(endOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
                     
-                    console.log('Yesterday filtering (LOCAL):', startOfYesterdayLocal, endOfYesterdayLocal);
-                    console.log('Yesterday filtering (UTC):', startOfYesterdayUTC, endOfYesterdayUTC);
-                    console.log('Central heating data points:', centralHeatingData.length);
-                    centralHeatingData.forEach((p, i) => console.log(`  ${i}: ${p.timestamp} = ${p.value}`));
-                    
                     // Find the state at the start of yesterday
                     let stateAtYesterdayStart = 'off'; // Default: heating is normally OFF (blocked)
                     for (let i = centralHeatingData.length - 1; i >= 0; i--) {
@@ -705,11 +700,8 @@
                     // Get all state changes during yesterday (in UTC time)
                     const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
-                        const inRange = time >= startOfYesterdayUTC && time <= endOfYesterdayUTC;
-                        console.log(`  Filter ${point.timestamp}: ${time.toISOString()} in range? ${inRange}`);
-                        return inRange;
+                        return time >= startOfYesterdayUTC && time <= endOfYesterdayUTC;
                     });
-                    console.log('Yesterday changes:', yesterdayChanges.length);
                     
                     // Create annotations for ON periods (heating blocked)
                     let annotationIndex = 0;
@@ -722,13 +714,12 @@
                         const time = new Date(point.timestamp);
                         const newState = point.value;
                         
-                        // Calculate quarter-hour index for local time (EET = UTC+2)
-                        // Add 2 hours to convert UTC to EET
-                        const hour = (time.getUTCHours() + 2) % 24;
+                        // Calculate quarter-hour index using UTC hours directly
+                        // (Chart labels are already in EET, but data filtering converted timestamps to UTC range)
+                        // The index position maps to chart labels which show: 2:00 UTC = index 8 (on chart shows "02:00")
+                        const hour = time.getUTCHours();
                         const minute = time.getUTCMinutes();
                         let quarterIndex = Math.floor(hour) * 4 + Math.floor(minute / 15);
-                        // Wrap around if we go past end of day (should not happen with proper filtering)
-                        quarterIndex = quarterIndex % 96;
                         
                         if (newState === 'on' && currentState !== 'on') {
                             // Transition to ON (blocking starts)
