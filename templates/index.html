@@ -213,9 +213,21 @@
                         </div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Päivän vaihteluväli</div>
-                        <div class="metric-value" style="font-size: 18px;">
-                            <span id="price-min">--</span> - <span id="price-max">--</span><span class="metric-unit">c/kWh</span>
+                        <div class="metric-label">Kallein hetki</div>
+                        <div class="metric-value">
+                            <span id="price-max">--</span><span class="metric-unit">c/kWh</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Halvin hetki</div>
+                        <div class="metric-value">
+                            <span id="price-min">--</span><span class="metric-unit">c/kWh</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Keskihinta</div>
+                        <div class="metric-value">
+                            <span id="price-avg">--</span><span class="metric-unit">c/kWh</span>
                         </div>
                     </div>
                 </div>
@@ -301,6 +313,14 @@
                 document.getElementById('price-current').textContent = data.price.current.toFixed(2);
                 document.getElementById('price-min').textContent = data.price.daily_min ? data.price.daily_min.toFixed(2) : '--';
                 document.getElementById('price-max').textContent = data.price.daily_max ? data.price.daily_max.toFixed(2) : '--';
+                
+                // Calculate and display average price
+                if (data.price.daily_prices && data.price.daily_prices.length > 0) {
+                    const avgPrice = data.price.daily_prices.reduce((a, b) => a + b, 0) / data.price.daily_prices.length;
+                    document.getElementById('price-avg').textContent = avgPrice.toFixed(2);
+                } else {
+                    document.getElementById('price-avg').textContent = '--';
+                }
                 
                 // Update room heater status
                 const roomHeaterState = data.switches.room_heater.state;
