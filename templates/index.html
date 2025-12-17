@@ -649,12 +649,10 @@
             
             // Create labels for every 15 minutes (quarter hours) in local time
             const labels = [];
-            const tzOffset = -new Date().getTimezoneOffset() / 60; // Timezone offset in hours
             for (let i = 0; i < prices.length; i++) {
-                const utcHour = Math.floor(i / 4);
+                const localHour = Math.floor(i / 4);
                 const minute = (i % 4) * 15;
-                const localHour = (utcHour + tzOffset) % 24;
-                labels.push(`${Math.floor(localHour).toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
+                labels.push(`${localHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
             }
             
             if (yesterdayPriceChart) {
@@ -697,10 +695,6 @@
                     const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
                         const inRange = time >= startOfYesterdayLocal && time <= endOfYesterdayLocal;
-                        console.log(`Point: ${point.timestamp}`);
-                        console.log(`  Parsed as: ${time.toString()}`);
-                        console.log(`  getUTCHours: ${time.getUTCHours()}`);
-                        console.log(`  In range (${startOfYesterdayLocal.toString()} - ${endOfYesterdayLocal.toString()}): ${inRange}`);
                         return inRange;
                     });
                     
@@ -716,14 +710,10 @@
                         const newState = point.value;
                         
                         // Calculate quarter-hour index in local time
-                        // Chart labels show local times, so convert timestamp to local time for indexing
-                        const utcHour = time.getUTCHours();
-                        const tzOffset = -new Date().getTimezoneOffset() / 60; // Timezone offset in hours
-                        const localHour = (utcHour + tzOffset) % 24;
-                        const minute = time.getUTCMinutes();
-                        let quarterIndex = Math.floor(localHour) * 4 + Math.floor(minute / 15);
-                        console.log(`Annotation: ${point.timestamp} state=${newState}`);
-                        console.log(`  utcHour=${utcHour}, tzOffset=${tzOffset}, localHour=${localHour}, quarterIndex=${quarterIndex}`);
+                        // Chart labels show local times (0-23 hours), so use local time directly
+                        const localHour = time.getHours();
+                        const minute = time.getMinutes();
+                        let quarterIndex = localHour * 4 + Math.floor(minute / 15);
                         
                         if (newState === 'on' && currentState !== 'on') {
                             // Transition to ON (blocking starts)
