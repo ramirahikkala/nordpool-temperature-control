@@ -266,9 +266,16 @@ def api_history():
         hours = int(request.args.get('hours', 24))
         
         # Calculate start time (hours ago from now)
-        from datetime import timedelta
-        start_time = datetime.now() - timedelta(hours=hours)
-        start_time_iso = start_time.isoformat()
+        # NOTE: HA API interprets timestamps without timezone info as UTC
+        # So we must convert local time to UTC before sending to HA
+        from datetime import timedelta, timezone
+        import time as time_module
+        
+        # Get current time in UTC
+        now_utc = datetime.now(timezone.utc)
+        start_time = now_utc - timedelta(hours=hours)
+        # Format as ISO string without timezone info (HA will interpret as UTC)
+        start_time_iso = start_time.replace(tzinfo=None).isoformat()
         
         # Build list of entities to query
         entities = []
@@ -290,9 +297,13 @@ def api_history():
                 entities.append(BASE_TEMPERATURE_INPUT)
         
         # Query HA history API
-        # Format: /api/history/period/<start_time>?filter_entity_id=entity1,entity2
+        # Format: /api/history/period/<start_time>?filter_entity_id=entity1,entity2&end_time=<end_time>
+        # NOTE: HA API requires explicit end_time for complete results, otherwise it limits responses
+        # Use end_time as "tomorrow" to ensure we get all current data including real-time updates
         entity_filter = ','.join(entities)
-        url = f"{HA_URL}/api/history/period/{start_time_iso}?filter_entity_id={entity_filter}"
+        end_time_utc = now_utc + timedelta(hours=24)
+        end_time = end_time_utc.replace(tzinfo=None).isoformat()
+        url = f"{HA_URL}/api/history/period/{start_time_iso}?filter_entity_id={entity_filter}&end_time={end_time}"
         
         response = requests.get(url, headers=headers, timeout=30)
         
