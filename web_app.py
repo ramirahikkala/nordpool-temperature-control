@@ -40,9 +40,15 @@ OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "sensor.ruuvitag_dc2d_tem
 
 
 def get_yesterday_prices():
-    """Get yesterday's prices from Nordpool sensor via history API."""
+    """Get yesterday's prices from Nordpool sensor via history API.
+    
+    The Nordpool sensor's raw_today attribute contains prices indexed by UTC time.
+    We need to rotate them to align with local time for correct display.
+    """
     try:
         from datetime import timedelta
+        import time
+        
         # Get yesterday at noon (to ensure we're in the middle of the day)
         yesterday_noon = (datetime.now() - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
         
@@ -61,6 +67,18 @@ def get_yesterday_prices():
                 if raw_today and len(raw_today) == 96:
                     # Extract just the values from the raw_today array
                     prices = [entry['value'] for entry in raw_today]
+                    
+                    # Nordpool prices are indexed by UTC time, but we want them indexed by local time
+                    # Calculate the timezone offset in hours
+                    utc_offset_seconds = time.timezone if time.daylight == 0 else time.altzone
+                    tz_offset_hours = -utc_offset_seconds // 3600
+                    
+                    # Rotate the array to align with local time
+                    # If we're UTC+2, we need to shift the array left by 2 positions (or right by 94)
+                    if tz_offset_hours != 0:
+                        shift = (tz_offset_hours * 4) % 96  # Convert hours to quarter-hours
+                        prices = prices[shift:] + prices[:shift]
+                    
                     return prices
         
         return None
