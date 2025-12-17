@@ -696,7 +696,12 @@
                     // Get all state changes during yesterday
                     const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
-                        return time >= startOfYesterdayLocal && time <= endOfYesterdayLocal;
+                        const inRange = time >= startOfYesterdayLocal && time <= endOfYesterdayLocal;
+                        console.log(`Point: ${point.timestamp}`);
+                        console.log(`  Parsed as: ${time.toString()}`);
+                        console.log(`  getUTCHours: ${time.getUTCHours()}`);
+                        console.log(`  In range (${startOfYesterdayLocal.toString()} - ${endOfYesterdayLocal.toString()}): ${inRange}`);
+                        return inRange;
                     });
                     
                     // Create annotations for ON periods (heating blocked)
@@ -717,6 +722,8 @@
                         const localHour = (utcHour + tzOffset) % 24;
                         const minute = time.getUTCMinutes();
                         let quarterIndex = Math.floor(localHour) * 4 + Math.floor(minute / 15);
+                        console.log(`Annotation: ${point.timestamp} state=${newState}`);
+                        console.log(`  utcHour=${utcHour}, tzOffset=${tzOffset}, localHour=${localHour}, quarterIndex=${quarterIndex}`);
                         
                         if (newState === 'on' && currentState !== 'on') {
                             // Transition to ON (blocking starts)
