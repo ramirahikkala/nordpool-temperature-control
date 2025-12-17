@@ -89,6 +89,15 @@
             color: #999;
         }
         
+        .metric.secondary {
+            opacity: 0.65;
+        }
+        
+        .metric.secondary .metric-value {
+            font-size: 20px;
+            color: #666;
+        }
+        
         .status-badge {
             display: inline-block;
             padding: 4px 12px;
@@ -190,13 +199,19 @@
                             <span id="temp-outdoor">--</span><span class="metric-unit">°C</span>
                         </div>
                     </div>
-                    <div class="metric">
+                    <div class="metric secondary">
+                        <div class="metric-label">Peruslämpötila</div>
+                        <div class="metric-value">
+                            <span id="temp-base">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric secondary">
                         <div class="metric-label">Tavoite</div>
                         <div class="metric-value">
                             <span id="temp-setpoint">--</span><span class="metric-unit">°C</span>
                         </div>
                     </div>
-                    <div class="metric">
+                    <div class="metric secondary">
                         <div class="metric-label">Säätö</div>
                         <div class="metric-value">
                             <span id="temp-adjustment">--</span><span class="metric-unit">°C</span>
@@ -297,6 +312,7 @@
                 // Update temperature
                 document.getElementById('temp-current').textContent = data.temperature.current.toFixed(2);
                 document.getElementById('temp-outdoor').textContent = data.temperature.outdoor !== null ? data.temperature.outdoor.toFixed(1) : '--';
+                document.getElementById('temp-base').textContent = data.temperature.base.toFixed(2);
                 document.getElementById('temp-setpoint').textContent = data.temperature.setpoint.toFixed(2);
                 document.getElementById('temp-adjustment').textContent = (data.temperature.adjustment >= 0 ? '+' : '') + data.temperature.adjustment.toFixed(2);
                 
@@ -904,11 +920,37 @@
             }
             // If no setpoint data available from HA, setpointPoints stays empty
             
-            // Create base temperature line (constant)
-            const baseTempPoints = tempPoints.map(point => ({
-                x: point.x,
-                y: baseTemp
-            }));
+            // Get base temperature history from HA input_number entity
+            const baseTemperatureEntity = historyData.base_temperature_entity || null;
+            let baseTempPoints = [];
+            
+            if (baseTemperatureEntity && entities[baseTemperatureEntity]) {
+                const btData = entities[baseTemperatureEntity];
+                baseTempPoints = btData.map(p => ({
+                    x: new Date(p.timestamp),
+                    y: (typeof p.value === 'number') ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
+                })).filter(p => p.y !== null);
+                
+                // Extend last base temperature value to current time
+                if (baseTempPoints.length > 0 && tempPoints.length > 0) {
+                    const lastBaseTemp = baseTempPoints[baseTempPoints.length - 1];
+                    const latestTemp = tempPoints[tempPoints.length - 1];
+                    
+                    // If temperature data extends beyond last base temp, extend it to match
+                    if (latestTemp.x > lastBaseTemp.x) {
+                        baseTempPoints.push({
+                            x: latestTemp.x,
+                            y: lastBaseTemp.y
+                        });
+                    }
+                }
+            } else {
+                // Fallback: create static line with current base temperature value
+                baseTempPoints = tempPoints.map(point => ({
+                    x: point.x,
+                    y: baseTemp
+                }));
+            }
             
             historyChart = new Chart(ctx, {
                 type: 'line',

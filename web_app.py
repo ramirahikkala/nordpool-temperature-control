@@ -87,17 +87,22 @@ def get_tomorrow_prices():
 
 def get_base_temperature_from_input():
     """Get base temperature from Home Assistant input_number entity."""
-    try:
-        response = requests.get(f"{HA_URL}/api/states/{BASE_TEMPERATURE_INPUT}", headers=headers, timeout=5)
-        if response.status_code == 200:
-            state = response.json().get("state")
-            if state:
-                return float(state)
-    except Exception as e:
-        print(f"Error fetching base temperature from {BASE_TEMPERATURE_INPUT}: {e}")
+    if BASE_TEMPERATURE_INPUT:
+        try:
+            response = requests.get(f"{HA_URL}/api/states/{BASE_TEMPERATURE_INPUT}", headers=headers, timeout=5)
+            if response.status_code == 200:
+                state = response.json().get("state")
+                if state:
+                    temp = float(state)
+                    print(f"Base temperature from HA ({BASE_TEMPERATURE_INPUT}): {temp}°C")
+                    return temp
+        except Exception as e:
+            print(f"Error fetching base temperature from {BASE_TEMPERATURE_INPUT}: {e}")
     
     # Fallback to calculated base temperature
-    return get_base_temperature()
+    base_temp = get_base_temperature()
+    print(f"Using fallback base temperature: {base_temp}°C")
+    return base_temp
 
 
 app = Flask(__name__)
@@ -277,6 +282,10 @@ def api_history():
         if 'SETPOINT_OUTPUT' in globals() and SETPOINT_OUTPUT:
             if SETPOINT_OUTPUT not in entities:
                 entities.append(SETPOINT_OUTPUT)
+        # Include base temperature input entity if configured
+        if BASE_TEMPERATURE_INPUT:
+            if BASE_TEMPERATURE_INPUT not in entities:
+                entities.append(BASE_TEMPERATURE_INPUT)
         
         # Query HA history API
         # Format: /api/history/period/<start_time>?filter_entity_id=entity1,entity2
@@ -296,7 +305,8 @@ def api_history():
             "end_time": datetime.now().isoformat(),
             "hours": hours,
             "entities": {},
-            "setpoint_entity": SETPOINT_OUTPUT if 'SETPOINT_OUTPUT' in globals() else None
+            "setpoint_entity": SETPOINT_OUTPUT if 'SETPOINT_OUTPUT' in globals() else None,
+            "base_temperature_entity": BASE_TEMPERATURE_INPUT
         }
         
         # HA returns an array where each element is the history for one entity
