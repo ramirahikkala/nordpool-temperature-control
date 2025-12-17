@@ -823,8 +823,9 @@
             const temperatureEntity = historyData.temperature_entity;
             const tempData = temperatureEntity && entities[temperatureEntity] ? entities[temperatureEntity] : [];
             
-            // Find room heater data by ID pattern
-            const roomHeaterData = Object.keys(entities).find(k => k.includes('5432044efb74')) ? entities[Object.keys(entities).find(k => k.includes('5432044efb74'))] : [];
+            // Use explicitly provided room heater entity ID from backend
+            const roomHeaterEntity = historyData.room_heater_entity;
+            const roomHeaterData = roomHeaterEntity && entities[roomHeaterEntity] ? entities[roomHeaterEntity] : [];
             
             // Prepare temperature dataset
             const tempPoints = tempData.map(p => ({
@@ -867,12 +868,12 @@
                     }
                 }
                 
-                // Close any open period at the end
+                // Close any open period at the end - extend to current time
                 if (periodStart !== null && data.length > 0) {
                     annotations[`${idPrefix}${boxId}`] = {
                         type: 'box',
                         xMin: periodStart,
-                        xMax: new Date(data[data.length - 1].timestamp),
+                        xMax: new Date(),
                         yMin: 0,
                         yMax: 1,
                         yScaleID: 'y1',
@@ -924,11 +925,35 @@
             // If no setpoint data available from HA, setpointPoints stays empty
             
             // Get base temperature history from HA input_number entity
-            // Always use static line since we need it to span the entire chart
-            baseTempPoints = tempPoints.map(point => ({
-                x: point.x,
-                y: baseTemp
-            }));
+            const baseTemperatureEntity = historyData.base_temperature_entity || null;
+            let baseTempPoints = [];
+            
+            if (baseTemperatureEntity && entities[baseTemperatureEntity]) {
+                const btData = entities[baseTemperatureEntity];
+                baseTempPoints = btData.map(p => ({
+                    x: new Date(p.timestamp),
+                    y: (typeof p.value === 'number') ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
+                })).filter(p => p.y !== null);
+                
+                // Extend last base temp value to current time if needed
+                if (baseTempPoints.length > 0 && tempPoints.length > 0) {
+                    const lastBaseTemp = baseTempPoints[baseTempPoints.length - 1];
+                    const latestTemp = tempPoints[tempPoints.length - 1];
+                    
+                    if (latestTemp.x > lastBaseTemp.x) {
+                        baseTempPoints.push({
+                            x: latestTemp.x,
+                            y: lastBaseTemp.y
+                        });
+                    }
+                }
+            } else {
+                // Fallback to static line if no history available
+                baseTempPoints = tempPoints.map(point => ({
+                    x: point.x,
+                    y: baseTemp
+                }));
+            }
             
             historyChart = new Chart(ctx, {
                 type: 'line',

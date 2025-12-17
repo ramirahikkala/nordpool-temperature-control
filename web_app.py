@@ -146,8 +146,10 @@ def api_status():
                 response = requests.get(f"{HA_URL}/api/states/{SWITCH_ENTITY}", headers=headers, timeout=5)
                 if response.status_code == 200:
                     room_heater_state = response.json().get("state")
-            except Exception:
-                pass
+                else:
+                    print(f"Failed to get room heater state: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching room heater state: {e}")
         
         # Get central heating switch state
         central_heating_state = None
@@ -279,7 +281,7 @@ def api_history():
         if PRICE_SENSOR:
             entities.append(PRICE_SENSOR)
         # Include calculated setpoint output entity if configured
-        if 'SETPOINT_OUTPUT' in globals() and SETPOINT_OUTPUT:
+        if SETPOINT_OUTPUT:
             if SETPOINT_OUTPUT not in entities:
                 entities.append(SETPOINT_OUTPUT)
         # Include base temperature input entity if configured
@@ -306,8 +308,9 @@ def api_history():
             "hours": hours,
             "entities": {},
             "temperature_entity": TEMPERATURE_SENSOR,
-            "setpoint_entity": SETPOINT_OUTPUT if 'SETPOINT_OUTPUT' in globals() else None,
-            "base_temperature_entity": BASE_TEMPERATURE_INPUT
+            "setpoint_entity": SETPOINT_OUTPUT,
+            "base_temperature_entity": BASE_TEMPERATURE_INPUT,
+            "room_heater_entity": SWITCH_ENTITY
         }
         
         # HA returns an array where each element is the history for one entity
