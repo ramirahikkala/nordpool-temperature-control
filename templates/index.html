@@ -714,10 +714,10 @@
                         const time = new Date(point.timestamp);
                         const newState = point.value;
                         
-                        // Calculate quarter-hour index using UTC hours directly
-                        // (Chart labels are already in EET, but data filtering converted timestamps to UTC range)
-                        // The index position maps to chart labels which show: 2:00 UTC = index 8 (on chart shows "02:00")
-                        const hour = time.getUTCHours();
+                        // Calculate quarter-hour index matching chart labels (which show EET time)
+                        // Chart labels: index 0 = "02:00", index 8 = "10:00", etc. (all +2 hours from UTC)
+                        // So we need to: UTC hours + 2 = EET hours, then convert to index
+                        const hour = (time.getUTCHours() + 2) % 24;
                         const minute = time.getUTCMinutes();
                         let quarterIndex = Math.floor(hour) * 4 + Math.floor(minute / 15);
                         
