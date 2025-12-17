@@ -926,10 +926,12 @@
             
             if (baseTemperatureEntity && entities[baseTemperatureEntity]) {
                 const btData = entities[baseTemperatureEntity];
+                console.log('Base temp entity:', baseTemperatureEntity, 'Data:', btData);
                 baseTempPoints = btData.map(p => ({
                     x: new Date(p.timestamp),
                     y: (typeof p.value === 'number') ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
                 })).filter(p => p.y !== null);
+                console.log('Base temp points:', baseTempPoints.length);
                 
                 // Extend last base temperature value to current time
                 if (baseTempPoints.length > 0 && tempPoints.length > 0) {
@@ -946,6 +948,7 @@
                 }
             } else {
                 // Fallback: create static line with current base temperature value
+                console.log('Using fallback base temp:', baseTemp);
                 baseTempPoints = tempPoints.map(point => ({
                     x: point.x,
                     y: baseTemp
