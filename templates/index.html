@@ -747,11 +747,8 @@
                     }
                     // If day started while heating was blocked
                     else if (stateAtYesterdayStart === 'on') {
-                        const firstChangeIdx = yesterdayChanges.length > 0 ? yesterdayChanges[0] : null;
-                        const endQuarter = firstChangeIdx ? firstChangeIdx.timestamp : 95;
-                        
                         // Find the end of the blocking period (when it transitions to OFF)
-                        let blockEndQuarter = 95; // Default: end of day
+                        let blockEndQuarter = 95; // Default: end of day if it never turned off
                         for (let i = 0; i < yesterdayChanges.length; i++) {
                             if (yesterdayChanges[i].value === 'off') {
                                 const time = new Date(yesterdayChanges[i].timestamp);
