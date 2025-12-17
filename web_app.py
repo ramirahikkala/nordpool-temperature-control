@@ -85,6 +85,21 @@ def get_tomorrow_prices():
         print(f"Error fetching tomorrow prices: {e}")
         return None
 
+def get_base_temperature_from_input():
+    """Get base temperature from Home Assistant input_number entity."""
+    try:
+        response = requests.get(f"{HA_URL}/api/states/{BASE_TEMPERATURE_INPUT}", headers=headers, timeout=5)
+        if response.status_code == 200:
+            state = response.json().get("state")
+            if state:
+                return float(state)
+    except Exception as e:
+        print(f"Error fetching base temperature from {BASE_TEMPERATURE_INPUT}: {e}")
+    
+    # Fallback to calculated base temperature
+    return get_base_temperature()
+
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for API endpoints
 
@@ -100,7 +115,7 @@ def api_status():
     """Get current system status."""
     try:
         # Get current values
-        base_temp = get_base_temperature()
+        base_temp = get_base_temperature_from_input()
         current_price = get_current_price()
         current_temp = get_current_temperature()
         
