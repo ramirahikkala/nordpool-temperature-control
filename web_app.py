@@ -42,12 +42,11 @@ OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "sensor.ruuvitag_dc2d_tem
 def get_yesterday_prices():
     """Get yesterday's prices from Nordpool sensor via history API.
     
-    The Nordpool sensor's raw_today attribute contains prices indexed by UTC time.
-    We need to rotate them to align with local time for correct display.
+    The Nordpool sensor's raw_today attribute is already indexed by local time,
+    just like the 'today' and 'tomorrow' attributes.
     """
     try:
         from datetime import timedelta
-        import time
         
         # Get yesterday at noon (to ensure we're in the middle of the day)
         yesterday_noon = (datetime.now() - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
@@ -62,43 +61,12 @@ def get_yesterday_prices():
             if history_data and len(history_data) > 0 and len(history_data[0]) > 0:
                 # Get the first state entry
                 state = history_data[0][0]
-                
-                # Debug: Log all available attributes
-                attrs = state.get('attributes', {})
-                print(f"DEBUG: Available attributes at {state.get('last_changed')}: {list(attrs.keys())}")
-                
-                raw_today = attrs.get('raw_today', [])
+                raw_today = state.get('attributes', {}).get('raw_today', [])
                 
                 if raw_today and len(raw_today) == 96:
                     # Extract just the values from the raw_today array
+                    # Data is already in local time format, no rotation needed
                     prices = [entry['value'] for entry in raw_today]
-                    
-                    # Nordpool prices are indexed by UTC time, but we want them indexed by local time
-                    # Calculate local timezone offset dynamically (handles DST automatically)
-                    # Get the offset for yesterday's date (in case DST changed)
-                    from datetime import timezone, timedelta
-                    yesterday = datetime.now() - timedelta(days=1)
-                    
-                    # Create a naive datetime at midnight yesterday and compare with UTC version
-                    naive_midnight = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-                    aware_midnight = naive_midnight.replace(tzinfo=timezone.utc).astimezone()
-                    offset = aware_midnight.utcoffset()
-                    tz_offset_hours = offset.total_seconds() / 3600
-                    
-                    # Debug: Find max price and its index
-                    max_price = max(prices)
-                    max_index_before = prices.index(max_price)
-                    max_hour_before = max_index_before / 4
-                    
-                    # Debug: Check if raw_today is already in local time or UTC time
-                    # by comparing with current day's prices
-                    print(f"DEBUG get_yesterday_prices:")
-                    print(f"  Max price: {max_price} at index {max_index_before} (hour {max_hour_before})")
-                    print(f"  First 5 prices: {prices[:5]}")
-                    print(f"  Last 5 prices: {prices[-5:]}")
-                    print(f"  tz_offset: {tz_offset_hours}")
-                    print(f"  Not rotating yet - let's see what raw_today indexing is")
-                    
                     return prices
         
         return None
