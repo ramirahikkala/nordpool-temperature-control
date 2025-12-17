@@ -90,24 +90,14 @@ def get_yesterday_prices():
                     max_index_before = prices.index(max_price)
                     max_hour_before = max_index_before / 4
                     
-                    # Rotate the array to align with local time
-                    # The array is indexed by UTC hour, but we want it indexed by local hour
-                    # For UTC+2: UTC 00:00 should map to local index 8 (02:00 local time)
-                    # So we need to rotate RIGHT (move items from end to beginning)
-                    if tz_offset_hours != 0:
-                        shift = (int(tz_offset_hours) * 4) % 96  # Convert hours to quarter-hours
-                        # Right rotation: prices[-shift:] + prices[:-shift]
-                        prices = prices[-shift:] + prices[:-shift]
-                    
-                    # Debug: Check max price after rotation
-                    max_index_after = prices.index(max_price)
-                    max_hour_after = max_index_after / 4
-                    
-                    print(f"DEBUG get_yesterday_prices: tz_offset={tz_offset_hours}h, shift={shift}q")
-                    print(f"  Max price before rotation: {max_price} at index {max_index_before} (hour {max_hour_before})")
-                    print(f"  Max price after rotation:  {max_price} at index {max_index_after} (hour {max_hour_after})")
-                    print(f"  Current time local: {datetime.now()}")
-                    print(f"  State timestamp: {state.get('last_changed', 'unknown')}")
+                    # Debug: Check if raw_today is already in local time or UTC time
+                    # by comparing with current day's prices
+                    print(f"DEBUG get_yesterday_prices:")
+                    print(f"  Max price: {max_price} at index {max_index_before} (hour {max_hour_before})")
+                    print(f"  First 5 prices: {prices[:5]}")
+                    print(f"  Last 5 prices: {prices[-5:]}")
+                    print(f"  tz_offset: {tz_offset_hours}")
+                    print(f"  Not rotating yet - let's see what raw_today indexing is")
                     
                     return prices
         
