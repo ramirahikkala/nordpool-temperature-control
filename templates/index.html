@@ -833,61 +833,26 @@
                 y: typeof p.value === 'number' ? p.value : null
             })).filter(p => p.y !== null);
             
-            // Create box annotations for room heater periods
-            const annotations = {};
-            
-            // Function to create heating period boxes
-            function createHeatingBoxes(data, idPrefix, color) {
-                let boxId = 0;
-                let periodStart = null;
-                
-                for (let i = 0; i < data.length; i++) {
-                    const point = data[i];
-                    const isOn = (point.value === 'on');
+            // Create a helper function to check if room heater is on at a given time
+            function isRoomHeaterOnAt(timestamp) {
+                for (let i = 0; i < roomHeaterData.length; i++) {
+                    const point = roomHeaterData[i];
+                    const pointTime = new Date(point.timestamp);
                     
-                    if (isOn && periodStart === null) {
-                        // Start of heating period
-                        periodStart = new Date(point.timestamp);
-                    } else if (!isOn && periodStart !== null) {
-                        // End of heating period
-                        annotations[`${idPrefix}${boxId}`] = {
-                            type: 'box',
-                            xMin: periodStart,
-                            xMax: new Date(point.timestamp),
-                            yMin: 0,
-                            yMax: 1,
-                            yScaleID: 'y1',
-                            backgroundColor: color,
-                            borderWidth: 0,
-                            label: {
-                                display: false
-                            }
-                        };
-                        boxId++;
-                        periodStart = null;
+                    if (pointTime > timestamp) {
+                        // We've passed the timestamp, return the state from the previous point
+                        if (i > 0) {
+                            return roomHeaterData[i - 1].value === 'on';
+                        }
+                        return false;
                     }
                 }
-                
-                // Close any open period at the end - extend to current time
-                if (periodStart !== null && data.length > 0) {
-                    annotations[`${idPrefix}${boxId}`] = {
-                        type: 'box',
-                        xMin: periodStart,
-                        xMax: new Date(),
-                        yMin: 0,
-                        yMax: 1,
-                        yScaleID: 'y1',
-                        backgroundColor: color,
-                        borderWidth: 0,
-                        label: {
-                            display: false
-                        }
-                    };
-                }
+                // If we reach the end, return the last known state
+                return roomHeaterData.length > 0 && roomHeaterData[roomHeaterData.length - 1].value === 'on';
             }
             
-            // Create boxes for room heater only (red)
-            createHeatingBoxes(roomHeaterData, 'roomHeater', 'rgba(220, 53, 69, 0.3)');
+            // Create empty annotations object (room heater coloring will be handled by segment colors)
+            const annotations = {};
             
             if (historyChart) {
                 historyChart.destroy();
@@ -980,7 +945,18 @@
                             stepped: true,
                             pointRadius: 0,
                             borderWidth: 1,
-                            fill: true
+                            fill: true,
+                            segment: {
+                                backgroundColor: (context) => {
+                                    const p0 = context.p0;
+                                    if (!p0) return 'rgba(255, 193, 7, 0.12)';
+                                    
+                                    const timestamp = new Date(p0.x);
+                                    return isRoomHeaterOnAt(timestamp) 
+                                        ? 'rgba(220, 53, 69, 0.2)'  // Red when heater is on
+                                        : 'rgba(255, 193, 7, 0.12)'; // Yellow when heater is off
+                                }
+                            }
                         },
                         {
                             label: 'Lämpötila',
