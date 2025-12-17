@@ -647,12 +647,13 @@
         async function updateYesterdayPriceChart(prices) {
             const ctx = document.getElementById('yesterdayPriceChart').getContext('2d');
             
-            // Create labels for every 15 minutes (quarter hours)
+            // Create labels for every 15 minutes (quarter hours) in local time (EET = UTC+2)
             const labels = [];
             for (let i = 0; i < prices.length; i++) {
-                const hour = Math.floor(i / 4);
+                const utcHour = Math.floor(i / 4);
                 const minute = (i % 4) * 15;
-                labels.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
+                const localHour = (utcHour + 2) % 24;
+                labels.push(`${localHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
             }
             
             if (yesterdayPriceChart) {
@@ -708,9 +709,9 @@
                         const time = new Date(point.timestamp);
                         const newState = point.value;
                         
-                        // Calculate quarter-hour index using UTC time directly
-                        // Timestamps are already in UTC and chart shows UTC times
-                        const hour = time.getUTCHours();
+                        // Calculate quarter-hour index for local time (EET = UTC+2)
+                        // Add 2 hours to convert UTC to EET
+                        const hour = (time.getUTCHours() + 2) % 24;
                         const minute = time.getUTCMinutes();
                         const quarterIndex = Math.floor(hour) * 4 + Math.floor(minute / 15);
                         
