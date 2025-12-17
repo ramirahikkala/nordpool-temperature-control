@@ -819,8 +819,11 @@
             
             const entities = historyData.entities;
             
-            // Find temperature and room heater data
-            const tempData = Object.keys(entities).find(k => k.includes('sisa')) ? entities[Object.keys(entities).find(k => k.includes('sisa'))] : [];
+            // Use explicitly provided entity IDs from backend
+            const temperatureEntity = historyData.temperature_entity;
+            const tempData = temperatureEntity && entities[temperatureEntity] ? entities[temperatureEntity] : [];
+            
+            // Find room heater data by ID pattern
             const roomHeaterData = Object.keys(entities).find(k => k.includes('5432044efb74')) ? entities[Object.keys(entities).find(k => k.includes('5432044efb74'))] : [];
             
             // Prepare temperature dataset

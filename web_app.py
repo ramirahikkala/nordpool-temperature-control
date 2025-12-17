@@ -305,6 +305,7 @@ def api_history():
             "end_time": datetime.now().isoformat(),
             "hours": hours,
             "entities": {},
+            "temperature_entity": TEMPERATURE_SENSOR,
             "setpoint_entity": SETPOINT_OUTPUT if 'SETPOINT_OUTPUT' in globals() else None,
             "base_temperature_entity": BASE_TEMPERATURE_INPUT
         }
