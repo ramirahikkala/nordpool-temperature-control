@@ -696,6 +696,7 @@
                         const state = point.value;
                         
                         // Calculate quarter-hour index for yesterday (0-95)
+                        // Use local time to match chart labels
                         const hour = time.getHours();
                         const minute = time.getMinutes();
                         const quarterIndex = hour * 4 + Math.floor(minute / 15);
@@ -703,7 +704,6 @@
                         if (state === 'on' && blockStart === null) {
                             blockStart = quarterIndex;
                         } else if (state === 'off' && blockStart !== null) {
-                            // Heating block ended - create annotation from start to current time
                             annotations[`block${annotationIndex}`] = {
                                 type: 'box',
                                 xMin: blockStart,
@@ -717,17 +717,12 @@
                         }
                     }
                     
-                    // If day ended in blocked state, only extend to the LAST data point, not beyond
-                    if (blockStart !== null && yesterdayData.length > 0) {
-                        const lastDataTime = new Date(yesterdayData[yesterdayData.length - 1].timestamp);
-                        const lastHour = lastDataTime.getHours();
-                        const lastMinute = lastDataTime.getMinutes();
-                        const lastQuarterIndex = lastHour * 4 + Math.floor(lastMinute / 15);
-                        
+                    // If day ended in blocked state
+                    if (blockStart !== null) {
                         annotations[`block${annotationIndex}`] = {
                             type: 'box',
                             xMin: blockStart,
-                            xMax: lastQuarterIndex,
+                            xMax: 95, // End of day (23:45)
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
                             borderWidth: 1
