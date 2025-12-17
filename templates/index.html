@@ -674,28 +674,33 @@
                         ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
                         : [];
                     
-                    // Get yesterday's date boundaries
+                    // Get yesterday's date boundaries in local time (EET), then convert to UTC for filtering
                     const now = new Date();
-                    const startOfYesterday = new Date(now);
-                    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-                    startOfYesterday.setHours(0, 0, 0, 0);
-                    const endOfYesterday = new Date(startOfYesterday);
-                    endOfYesterday.setHours(23, 59, 59, 999);
+                    const startOfYesterdayLocal = new Date(now);
+                    startOfYesterdayLocal.setDate(startOfYesterdayLocal.getDate() - 1);
+                    startOfYesterdayLocal.setHours(0, 0, 0, 0);
+                    const endOfYesterdayLocal = new Date(startOfYesterdayLocal);
+                    endOfYesterdayLocal.setHours(23, 59, 59, 999);
+                    
+                    // Convert to UTC for comparison with ISO timestamps
+                    // Local time = UTC + 2 hours (EET), so UTC = Local - 2 hours
+                    const startOfYesterdayUTC = new Date(startOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
+                    const endOfYesterdayUTC = new Date(endOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
                     
                     // Find the state at the start of yesterday
                     let stateAtYesterdayStart = 'off'; // Default: heating is normally OFF (blocked)
                     for (let i = centralHeatingData.length - 1; i >= 0; i--) {
                         const time = new Date(centralHeatingData[i].timestamp);
-                        if (time < startOfYesterday) {
+                        if (time < startOfYesterdayUTC) {
                             stateAtYesterdayStart = centralHeatingData[i].value;
                             break;
                         }
                     }
                     
-                    // Get all state changes during yesterday
+                    // Get all state changes during yesterday (in UTC time)
                     const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
-                        return time >= startOfYesterday && time <= endOfYesterday;
+                        return time >= startOfYesterdayUTC && time <= endOfYesterdayUTC;
                     });
                     
                     // Create annotations for ON periods (heating blocked)
@@ -713,7 +718,9 @@
                         // Add 2 hours to convert UTC to EET
                         const hour = (time.getUTCHours() + 2) % 24;
                         const minute = time.getUTCMinutes();
-                        const quarterIndex = Math.floor(hour) * 4 + Math.floor(minute / 15);
+                        let quarterIndex = Math.floor(hour) * 4 + Math.floor(minute / 15);
+                        // Wrap around if we go past end of day (should not happen with proper filtering)
+                        quarterIndex = quarterIndex % 96;
                         
                         if (newState === 'on' && currentState !== 'on') {
                             // Transition to ON (blocking starts)
