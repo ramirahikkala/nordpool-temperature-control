@@ -675,7 +675,7 @@
                         ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
                         : [];
                     
-                    // Get yesterday's date boundaries in local time (EET), then convert to UTC for filtering
+                    // Get yesterday's date boundaries in local time
                     const now = new Date();
                     const startOfYesterdayLocal = new Date(now);
                     startOfYesterdayLocal.setDate(startOfYesterdayLocal.getDate() - 1);
@@ -683,25 +683,20 @@
                     const endOfYesterdayLocal = new Date(startOfYesterdayLocal);
                     endOfYesterdayLocal.setHours(23, 59, 59, 999);
                     
-                    // Convert to UTC for comparison with ISO timestamps
-                    // Local time = UTC + 2 hours (EET), so UTC = Local - 2 hours
-                    const startOfYesterdayUTC = new Date(startOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
-                    const endOfYesterdayUTC = new Date(endOfYesterdayLocal.getTime() - 2 * 60 * 60 * 1000);
-                    
                     // Find the state at the start of yesterday
                     let stateAtYesterdayStart = 'off'; // Default: heating is normally OFF (blocked)
                     for (let i = centralHeatingData.length - 1; i >= 0; i--) {
                         const time = new Date(centralHeatingData[i].timestamp);
-                        if (time < startOfYesterdayUTC) {
+                        if (time < startOfYesterdayLocal) {
                             stateAtYesterdayStart = centralHeatingData[i].value;
                             break;
                         }
                     }
                     
-                    // Get all state changes during yesterday (in UTC time)
+                    // Get all state changes during yesterday
                     const yesterdayChanges = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
-                        return time >= startOfYesterdayUTC && time <= endOfYesterdayUTC;
+                        return time >= startOfYesterdayLocal && time <= endOfYesterdayLocal;
                     });
                     
                     // Create annotations for ON periods (heating blocked)
