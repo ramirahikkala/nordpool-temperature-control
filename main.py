@@ -58,6 +58,30 @@ headers = {
 }
 
 
+def retry_request(func, max_retries=3, initial_delay=1.0):
+    """Retry a function with exponential backoff.
+    
+    Args:
+        func: Function to retry (should return None on failure)
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds (doubles each retry)
+    
+    Returns:
+        Result from func, or None if all retries failed
+    """
+    for attempt in range(max_retries):
+        result = func()
+        if result is not None:
+            return result
+        
+        if attempt < max_retries - 1:  # Don't sleep after last attempt
+            delay = initial_delay * (2 ** attempt)
+            logger.warning(f"Retry {attempt + 1}/{max_retries} after {delay}s...")
+            time.sleep(delay)
+    
+    return None
+
+
 def get_base_temperature():
     """
     Get base temperature setpoint.
@@ -87,43 +111,49 @@ def get_base_temperature():
 
 
 def get_current_price():
-    """Get current electricity price from the price sensor."""
-    try:
-        response = requests.get(
-            f"{HA_URL}/api/states/{PRICE_SENSOR}",
-            headers=headers,
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            current_price = float(data['state'])
-            return current_price
-        else:
-            logger.error(f"Error getting price: Status {response.status_code}")
+    """Get current electricity price from the price sensor with retry logic."""
+    def _fetch():
+        try:
+            response = requests.get(
+                f"{HA_URL}/api/states/{PRICE_SENSOR}",
+                headers=headers,
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                current_price = float(data['state'])
+                return current_price
+            else:
+                logger.error(f"Error getting price: Status {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching price: {e}")
             return None
-    except Exception as e:
-        logger.error(f"Error fetching price: {e}")
-        return None
+    
+    return retry_request(_fetch, max_retries=3, initial_delay=1.0)
 
 
 def get_current_temperature():
-    """Get current temperature from the temperature sensor."""
-    try:
-        response = requests.get(
-            f"{HA_URL}/api/states/{TEMPERATURE_SENSOR}",
-            headers=headers,
-            timeout=5
-        )
-        if response.status_code == 200:
-            data = response.json()
-            current_temp = float(data['state'])
-            return current_temp
-        else:
-            logger.error(f"Error getting temperature: Status {response.status_code}")
+    """Get current temperature from the temperature sensor with retry logic."""
+    def _fetch():
+        try:
+            response = requests.get(
+                f"{HA_URL}/api/states/{TEMPERATURE_SENSOR}",
+                headers=headers,
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                current_temp = float(data['state'])
+                return current_temp
+            else:
+                logger.error(f"Error getting temperature: Status {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching temperature: {e}")
             return None
-    except Exception as e:
-        logger.error(f"Error fetching temperature: {e}")
-        return None
+    
+    return retry_request(_fetch, max_retries=3, initial_delay=1.0)
 
 
 def calculate_temperature_adjustment(price):
