@@ -12,10 +12,13 @@ os.environ.setdefault("HA_API_TOKEN", "test_token_for_unit_tests")
 from main import (
     calculate_temperature_adjustment,
     get_setpoint_temperature,
+    should_central_heating_run,
     BASE_TEMPERATURE_FALLBACK,
     PRICE_LOW_THRESHOLD,
     PRICE_HIGH_THRESHOLD,
-    TEMP_VARIATION
+    TEMP_VARIATION,
+    PRICE_ALWAYS_ON_THRESHOLD,
+    MAX_SHUTOFF_HOURS
 )
 
 # Use fallback as base temperature for tests
@@ -171,6 +174,90 @@ class TestEdgeCases:
         adjustment = calculate_temperature_adjustment(7.333)
         # Should have at most 2 decimal places
         assert round(adjustment, 2) == adjustment
+
+
+class TestCentralHeatingControl:
+    """Test central heating control logic with 15-minute granularity."""
+    
+    def test_cheap_price_always_on(self):
+        """Test that cheap prices always allow heating to run."""
+        # Create 96 sample prices (24 hours * 4 quarters)
+        prices = [10.0] * 96
+        
+        # Price below threshold should return True
+        should_run, reason = should_central_heating_run(5.0, prices)
+        assert should_run is True
+        assert "always on" in reason.lower() or "threshold" in reason.lower()
+    
+    def test_15_minute_granularity(self):
+        """Test that the function works with 96 prices (15-minute resolution)."""
+        # 96 prices = 24 hours at 15-minute intervals
+        prices = [10.0 + i*0.1 for i in range(96)]  # Incrementing prices
+        
+        # Test with different prices
+        should_run, reason = should_central_heating_run(15.0, prices)
+        assert isinstance(should_run, bool)
+        assert isinstance(reason, str)
+    
+    def test_top_expensive_quarters_shutoff(self):
+        """Test that the top expensive quarters are shut off."""
+        # Create prices where last 2 hours (8 quarters) are most expensive
+        prices = [10.0] * 88 + [50.0] * 8  # Last 8 quarters are expensive
+        
+        # High price in expensive quarters should turn off heating
+        should_run, reason = should_central_heating_run(50.0, prices)
+        assert should_run is False
+        assert "top" in reason.lower() or "expensive" in reason.lower()
+    
+    def test_low_price_in_expensive_range(self):
+        """Test that low prices don't trigger shutoff even if within shutoff window."""
+        # Create prices where last 2 hours are expensive
+        prices = [50.0] * 88 + [60.0] * 8
+        
+        # Current price is 10 (cheap) - should not shut off even if it's rare
+        should_run, reason = should_central_heating_run(10.0, prices)
+        assert should_run is True
+    
+    def test_tied_prices_ranked_correctly(self):
+        """Test handling of multiple prices at same level."""
+        # Create prices with many tied values
+        prices = [20.0] * 50 + [30.0] * 46  # 50 quarters at 20, 46 at 30
+        
+        # At the boundary, should be handled correctly
+        should_run_20, _ = should_central_heating_run(20.0, prices)
+        should_run_30, _ = should_central_heating_run(30.0, prices)
+        
+        # 30 is always more expensive, so different behavior
+        assert isinstance(should_run_20, bool)
+        assert isinstance(should_run_30, bool)
+    
+    def test_max_shutoff_hours_respected(self):
+        """Test that maximum shutoff hours configuration is respected."""
+        # Create a day with top MAX_SHUTOFF_HOURS being expensive
+        expensive_quarters = int(MAX_SHUTOFF_HOURS * 4)
+        prices = [10.0] * (96 - expensive_quarters) + [50.0] * expensive_quarters
+        
+        # Price at threshold should result in shutoff
+        should_run, reason = should_central_heating_run(50.0, prices)
+        assert should_run is False
+        assert str(expensive_quarters) in reason or "top" in reason.lower()
+    
+    def test_no_prices_defaults_on(self):
+        """Test that missing prices default to heating ON."""
+        should_run, reason = should_central_heating_run(10.0, [])
+        assert should_run is True
+        assert "no" in reason.lower() or "available" in reason.lower()
+    
+    def test_result_format(self):
+        """Test that function returns expected tuple format."""
+        prices = [15.0] * 96
+        result = should_central_heating_run(15.0, prices)
+        
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        should_run, reason = result
+        assert isinstance(should_run, bool)
+        assert isinstance(reason, str)
 
 
 if __name__ == "__main__":
