@@ -33,6 +33,9 @@ from main import (
     SETPOINT_OUTPUT,
 )
 
+# Import heating logger
+from heating_logger import get_decisions, get_decisions_by_date
+
 load_dotenv()
 
 # Outdoor temperature sensor
@@ -361,6 +364,37 @@ def api_history():
             result['entities'][entity_id] = points
         
         return jsonify(result)
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/heating-decisions')
+def api_heating_decisions():
+    """Get heating decisions log.
+    
+    Query parameters:
+    - date: Date in YYYY-MM-DD format (default: today)
+    - limit: Maximum number of decisions to return (default: all)
+    
+    Returns:
+        List of decisions with timestamp, decision (HEAT/BLOCK), price, and reason
+    """
+    try:
+        date_str = request.args.get('date')
+        limit = request.args.get('limit', type=int)
+        
+        if date_str:
+            # Get decisions for specific date
+            decisions = get_decisions_by_date(date_str)
+        else:
+            # Get all recent decisions
+            decisions = get_decisions(limit=limit)
+        
+        return jsonify({
+            "decisions": decisions,
+            "count": len(decisions)
+        })
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -3,8 +3,11 @@ import json
 import os
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
+
+# Import heating logger for file-based decision logging
+from heating_logger import log_heating_decision as log_decision_to_file
 
 # Load environment variables from .env file
 load_dotenv()
@@ -365,10 +368,10 @@ def should_central_heating_run(current_price, daily_prices):
 
 
 def log_heating_decision_to_ha(should_run, reason, current_price):
-    """Log heating decision to Home Assistant logger service.
+    """Log heating decision to local file and stdout.
     
-    Creates a filterable log entry that shows up in HA logs.
-    Can be filtered by searching for '[HEATING]' or logger name 'heating_control'
+    Stores decision in local JSON file (viewable via web API).
+    Also logs to stdout (for container logs).
     
     Args:
         should_run: True if heating should run, False if blocked
@@ -379,23 +382,19 @@ def log_heating_decision_to_ha(should_run, reason, current_price):
         return  # Central heating not configured, don't log
     
     decision = "HEAT" if should_run else "BLOCK"
-    message = f"[HEATING] {decision} @ {current_price:.2f} c/kWh | {reason[:70]}"
+    timestamp = datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
     
+    # Format: [HEATING_DECISION] HEAT|BLOCK 12:34:56 @ 6.29 c/kWh | reason
+    message = f"[HEATING_DECISION] {decision} {timestamp} @ {current_price:.2f} c/kWh | {reason[:60]}"
+    
+    # Log to stdout/container logs
+    logger.info(message)
+    
+    # Log to local file (for web API and persistence)
     try:
-        response = requests.post(
-            f"{HA_URL}/api/services/logger/log",
-            headers=headers,
-            json={
-                "level": "info",
-                "message": message,
-                "logger": "heating_control"
-            },
-            timeout=5
-        )
-        if response.status_code not in (200, 201):
-            logger.debug(f"HA logger returned status {response.status_code}")
+        log_decision_to_file(should_run, reason, current_price)
     except Exception as e:
-        logger.debug(f"Could not log to HA: {e}")
+        logger.warning(f"Could not write decision to file: {e}")
 
 
 def control_central_heating(should_run):
