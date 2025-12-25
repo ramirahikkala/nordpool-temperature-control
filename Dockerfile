@@ -9,6 +9,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock .
 COPY main.py .
 COPY web_app.py .
+COPY heating_logger.py .
 COPY templates/ templates/
 
 # Install dependencies
