@@ -118,10 +118,10 @@ def get_price_from_day_array(prices_array):
     """Extract current quarter-hour price from the day's price array.
     
     Args:
-        prices_array: List of 96 prices (one per quarter-hour, 00:00-23:45)
+        prices_array: List of 96 prices (one per quarter-hour, 00:00-23:45) in c/kWh
     
     Returns:
-        Price in c/kWh (converted from EUR/kWh)
+        Price in c/kWh
     """
     tz = ZoneInfo("Europe/Helsinki")
     now = datetime.now(tz)
@@ -130,10 +130,8 @@ def get_price_from_day_array(prices_array):
     quarter = (now.hour * 4) + (now.minute // 15)
     
     if 0 <= quarter < len(prices_array):
-        # Price is in EUR/kWh, convert to c/kWh
-        price_eur = prices_array[quarter]
-        price_cents = price_eur * 100
-        logger.debug(f"Quarter {quarter}: {price_eur} EUR/kWh = {price_cents:.2f} c/kWh")
+        price_cents = prices_array[quarter]
+        logger.debug(f"Quarter {quarter}: {price_cents:.2f} c/kWh")
         return price_cents
     else:
         logger.error(f"Invalid quarter index {quarter}")
@@ -145,7 +143,6 @@ def get_current_price():
     
     Fetches from the Nordpool sensor's 'today' array (96 quarter-hour prices)
     to get the actual price for the current quarter, avoiding caching issues.
-    Prices are in EUR/kWh, converted to c/kWh for use in thresholds.
     """
     def _fetch():
         try:
@@ -165,9 +162,9 @@ def get_current_price():
                     return price_cents
                 else:
                     logger.warning(f"Unexpected 'today' array length: {len(today_prices)}")
-                    # Fallback: use state value (in EUR/kWh, convert to c/kWh)
-                    state_price_eur = float(data['state'])
-                    return state_price_eur * 100
+                    # Fallback: use state value directly (already in c/kWh)
+                    state_price = float(data['state'])
+                    return state_price
             else:
                 logger.error(f"Error getting price: Status {response.status_code}")
                 return None
