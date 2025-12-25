@@ -1,3 +1,6 @@
+volumes:
+  app_data:
+
 services:
   temperature-controller:
     build: .
@@ -8,6 +11,8 @@ services:
     environment:
       - TZ=Europe/Helsinki
     command: uv run python main.py
+    volumes:
+      - app_data:/app/data
   
   web-dashboard:
     build: .
@@ -22,6 +27,8 @@ services:
     networks:
       - caddy-proxy
     working_dir: /app
+    volumes:
+      - app_data:/app/data
     command: sh -c ". /app/.venv/bin/activate && gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 web_app:app"
 
 networks:
