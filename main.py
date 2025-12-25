@@ -364,6 +364,40 @@ def should_central_heating_run(current_price, daily_prices):
         return True, f"Not in top-{max_shutoff_quarters} expensive quarters (price {current_price:.2f} c/kWh, threshold {shutoff_threshold:.2f} c/kWh)"
 
 
+def log_heating_decision_to_ha(should_run, reason, current_price):
+    """Log heating decision to Home Assistant logger service.
+    
+    Creates a filterable log entry that shows up in HA logs.
+    Can be filtered by searching for '[HEATING]' or logger name 'heating_control'
+    
+    Args:
+        should_run: True if heating should run, False if blocked
+        reason: Reason for the decision (explanation string)
+        current_price: Current electricity price in c/kWh
+    """
+    if not CENTRAL_HEATING_SHUTOFF_SWITCH:
+        return  # Central heating not configured, don't log
+    
+    decision = "HEAT" if should_run else "BLOCK"
+    message = f"[HEATING] {decision} @ {current_price:.2f} c/kWh | {reason[:70]}"
+    
+    try:
+        response = requests.post(
+            f"{HA_URL}/api/services/logger/log",
+            headers=headers,
+            json={
+                "level": "info",
+                "message": message,
+                "logger": "heating_control"
+            },
+            timeout=5
+        )
+        if response.status_code not in (200, 201):
+            logger.debug(f"HA logger returned status {response.status_code}")
+    except Exception as e:
+        logger.debug(f"Could not log to HA: {e}")
+
+
 def control_central_heating(should_run):
     """Control the central heating switch.
     
@@ -493,6 +527,9 @@ def run_control():
                 
                 # Determine if central heating should run
                 should_run, reason = should_central_heating_run(current_price, daily_prices)
+                
+                # Log decision to Home Assistant for easy filtering
+                log_heating_decision_to_ha(should_run, reason, current_price)
                 
                 logger.info("Central Heating Decision:")
                 logger.info(f"  Current price: {current_price:.2f} c/kWh")
