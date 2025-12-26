@@ -290,6 +290,8 @@ def api_history():
         entities = []
         if TEMPERATURE_SENSOR:
             entities.append(TEMPERATURE_SENSOR)
+        if OUTDOOR_TEMP_SENSOR:
+            entities.append(OUTDOOR_TEMP_SENSOR)
         if SWITCH_ENTITY:
             entities.append(SWITCH_ENTITY)
         if CENTRAL_HEATING_SHUTOFF_SWITCH:
@@ -328,6 +330,7 @@ def api_history():
             "hours": hours,
             "entities": {},
             "temperature_entity": TEMPERATURE_SENSOR,
+            "outdoor_temperature_entity": OUTDOOR_TEMP_SENSOR,
             "setpoint_entity": SETPOINT_OUTPUT,
             "base_temperature_entity": BASE_TEMPERATURE_INPUT,
             "room_heater_entity": SWITCH_ENTITY

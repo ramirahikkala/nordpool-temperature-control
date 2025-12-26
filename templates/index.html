@@ -1066,6 +1066,18 @@
                 }));
             }
             
+            // Get outdoor temperature history
+            const outdoorTempEntity = historyData.outdoor_temperature_entity || OUTDOOR_TEMP_SENSOR;
+            let outdoorTempPoints = [];
+            
+            if (outdoorTempEntity && entities[outdoorTempEntity]) {
+                const otData = entities[outdoorTempEntity];
+                outdoorTempPoints = otData.map(p => ({
+                    x: new Date(p.timestamp),
+                    y: typeof p.value === 'number' ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
+                })).filter(p => p.y !== null);
+            }
+            
             historyChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -1103,6 +1115,17 @@
                                         : 'rgba(255, 193, 7, 0.12)'; // Yellow when heater is off
                                 }
                             }
+                        },
+                        {
+                            label: 'Ulkolämpötila',
+                            data: outdoorTempPoints,
+                            borderColor: '#17a2b8',
+                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                            yAxisID: 'y',
+                            stepped: true,
+                            pointRadius: 1,
+                            borderWidth: 2,
+                            borderDash: [3, 3]
                         },
                         {
                             label: 'Lämpötila',
