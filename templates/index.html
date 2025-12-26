@@ -325,9 +325,16 @@
             </div>
             
             <div class="card">
-                <h2>🌡️ Lämpötila- ja lämmityshistoria (24 h)</h2>
+                <h2>🌡️ Sisälämpötila ja lämmitys (24 h)</h2>
                 <div class="chart-container" style="height: 400px;">
-                    <canvas id="historyChart"></canvas>
+                    <canvas id="indoorTempChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>❄️ Ulkolämpötila (24 h)</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="outdoorTempChart"></canvas>
                 </div>
             </div>
             
@@ -358,7 +365,8 @@
         let priceChart = null;
         let tomorrowPriceChart = null;
         let yesterdayPriceChart = null;
-        let historyChart = null;
+        let indoorTempChart = null;
+        let outdoorTempChart = null;
         let currentStatus = null;
         
         async function loadData() {
@@ -953,15 +961,16 @@
                 }
                 
                 const data = await response.json();
-                updateHistoryChart(data);
+                updateIndoorTempChart(data);
+                updateOutdoorTempChart(data);
                 
             } catch (error) {
                 console.error('Error loading history:', error);
             }
         }
         
-        function updateHistoryChart(historyData) {
-            const ctx = document.getElementById('historyChart').getContext('2d');
+        function updateIndoorTempChart(historyData) {
+            const ctx = document.getElementById('indoorTempChart').getContext('2d');
             
             const entities = historyData.entities;
             
@@ -1000,8 +1009,8 @@
             // Create empty annotations object (room heater coloring will be handled by segment colors)
             const annotations = {};
             
-            if (historyChart) {
-                historyChart.destroy();
+            if (indoorTempChart) {
+                indoorTempChart.destroy();
             }
             
             // Get base temperature for baseline chart
@@ -1078,7 +1087,7 @@
                 })).filter(p => p.y !== null);
             }
             
-            historyChart = new Chart(ctx, {
+            indoorTempChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     datasets: [
@@ -1115,17 +1124,6 @@
                                         : 'rgba(255, 193, 7, 0.12)'; // Yellow when heater is off
                                 }
                             }
-                        },
-                        {
-                            label: 'Ulkolämpötila',
-                            data: outdoorTempPoints,
-                            borderColor: '#17a2b8',
-                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
-                            yAxisID: 'y',
-                            stepped: true,
-                            pointRadius: 1,
-                            borderWidth: 2,
-                            borderDash: [3, 3]
                         },
                         {
                             label: 'Lämpötila',
@@ -1219,6 +1217,83 @@
                             max: 1,
                             grid: {
                                 drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateOutdoorTempChart(historyData) {
+            const ctx = document.getElementById('outdoorTempChart').getContext('2d');
+            
+            const entities = historyData.entities;
+            
+            // Get outdoor temperature history
+            const outdoorTempEntity = historyData.outdoor_temperature_entity;
+            let outdoorTempPoints = [];
+            
+            if (outdoorTempEntity && entities[outdoorTempEntity]) {
+                const otData = entities[outdoorTempEntity];
+                outdoorTempPoints = otData.map(p => ({
+                    x: new Date(p.timestamp),
+                    y: typeof p.value === 'number' ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value))
+                })).filter(p => p.y !== null);
+            }
+            
+            if (outdoorTempChart) {
+                outdoorTempChart.destroy();
+            }
+            
+            outdoorTempChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Ulkolämpötila',
+                            data: outdoorTempPoints,
+                            borderColor: '#17a2b8',
+                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                            yAxisID: 'y',
+                            stepped: true,
+                            pointRadius: 1,
+                            borderWidth: 2,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'HH:mm'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Aika'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Ulkolämpötila (°C)'
                             }
                         }
                     }
