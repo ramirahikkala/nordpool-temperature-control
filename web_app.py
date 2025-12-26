@@ -38,8 +38,8 @@ from heating_logger import get_decisions, get_decisions_by_date
 
 load_dotenv()
 
-# Outdoor temperature sensor
-OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "sensor.ruuvitag_dc2d_temperature")
+# Outdoor temperature sensor (optional - leave empty to disable outdoor temp display)
+OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "")
 
 
 def get_yesterday_prices():

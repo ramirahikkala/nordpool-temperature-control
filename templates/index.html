@@ -1067,7 +1067,7 @@
             }
             
             // Get outdoor temperature history
-            const outdoorTempEntity = historyData.outdoor_temperature_entity || OUTDOOR_TEMP_SENSOR;
+            const outdoorTempEntity = historyData.outdoor_temperature_entity;
             let outdoorTempPoints = [];
             
             if (outdoorTempEntity && entities[outdoorTempEntity]) {
