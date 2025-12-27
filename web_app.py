@@ -143,12 +143,15 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/api/status')
-@cache.cached(timeout=300, query_string=True)
-def api_status():
-    """Get current system status (cached for 5 minutes)."""
+@app.route('/api/current-state')
+@cache.cached(timeout=60, query_string=True)
+def api_current_state():
+    """Get current temperature, price, and setpoint.
+    
+    Returns: {temperature: float, price: float, setpoint: float, adjustment: float}
+    Cached for 1 minute (real-time updates)
+    """
     try:
-        # Get current values
         base_temp = get_base_temperature_from_input()
         current_price = get_current_price()
         current_temp = get_current_temperature()
@@ -156,7 +159,140 @@ def api_status():
         if current_price is None or current_temp is None:
             return jsonify({"error": "Failed to fetch sensor data"}), 500
         
-        # Calculate setpoint
+        setpoint_temp, adjustment = get_setpoint_temperature(current_price, base_temp)
+        
+        return jsonify({
+            "timestamp": datetime.now().isoformat(),
+            "temperature": current_temp,
+            "base_temperature": base_temp,
+            "price": current_price,
+            "setpoint": setpoint_temp,
+            "adjustment": adjustment
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/switches-state')
+@cache.cached(timeout=60, query_string=True)
+def api_switches_state():
+    """Get current state of all switches (room heater, central heating).
+    
+    Returns: {room_heater: {state, entity_id}, central_heating: {state, is_running, entity_id}}
+    Cached for 1 minute (real-time updates)
+    """
+    try:
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "switches": {}
+        }
+        
+        # Room heater state
+        if SWITCH_ENTITY:
+            try:
+                response = requests.get(f"{HA_URL}/api/states/{SWITCH_ENTITY}", headers=headers, timeout=5)
+                if response.status_code == 200:
+                    state = response.json().get("state")
+                    result["switches"]["room_heater"] = {
+                        "state": state,
+                        "entity_id": SWITCH_ENTITY
+                    }
+            except Exception as e:
+                print(f"Error fetching room heater state: {e}")
+        
+        # Central heating state
+        if CENTRAL_HEATING_SHUTOFF_SWITCH:
+            try:
+                response = requests.get(f"{HA_URL}/api/states/{CENTRAL_HEATING_SHUTOFF_SWITCH}", headers=headers, timeout=5)
+                if response.status_code == 200:
+                    state = response.json().get("state")
+                    # Inverted: OFF = running, ON = blocked
+                    result["switches"]["central_heating"] = {
+                        "state": state,
+                        "is_running": (state == "off"),
+                        "entity_id": CENTRAL_HEATING_SHUTOFF_SWITCH
+                    }
+            except Exception as e:
+                print(f"Error fetching central heating state: {e}")
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/prices')
+@cache.cached(timeout=300, query_string=True)
+def api_prices():
+    """Get electricity prices: today, yesterday, tomorrow.
+    
+    Returns: {current: float, daily_prices: [96], yesterday_prices: [96], tomorrow_prices: [96], daily_min: float, daily_max: float}
+    Cached for 5 minutes
+    """
+    try:
+        current_price = get_current_price()
+        daily_prices = get_daily_prices()
+        yesterday_prices = get_yesterday_prices()
+        tomorrow_prices = get_tomorrow_prices()
+        
+        return jsonify({
+            "timestamp": datetime.now().isoformat(),
+            "current": current_price,
+            "daily_prices": daily_prices,
+            "yesterday_prices": yesterday_prices,
+            "tomorrow_prices": tomorrow_prices,
+            "daily_min": min(daily_prices) if daily_prices else None,
+            "daily_max": max(daily_prices) if daily_prices else None
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/central-heating-decision')
+@cache.cached(timeout=300, query_string=True)
+def api_central_heating_decision():
+    """Get central heating run/block decision logic.
+    
+    Returns: {should_run: bool, reason: str, current_price: float}
+    Cached for 5 minutes
+    """
+    try:
+        current_price = get_current_price()
+        daily_prices = get_daily_prices()
+        
+        if not daily_prices or CENTRAL_HEATING_SHUTOFF_SWITCH is None:
+            return jsonify({"should_run": None, "reason": "Insufficient data or not configured", "current_price": current_price}), 200
+        
+        should_run, reason = should_central_heating_run(current_price, daily_prices)
+        
+        return jsonify({
+            "timestamp": datetime.now().isoformat(),
+            "should_run": should_run,
+            "reason": reason,
+            "current_price": current_price
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/status')
+@cache.cached(timeout=60, query_string=True)
+def api_status():
+    """Get combined current status (aggregates all focused endpoints).
+    
+    This endpoint combines data from multiple focused endpoints for convenience.
+    For specific data, use dedicated endpoints: /api/current-state, /api/switches-state, /api/prices, /api/central-heating-decision
+    
+    Cached for 1 minute.
+    """
+    try:
+        # Get all focused endpoint data
+        base_temp = get_base_temperature_from_input()
+        current_price = get_current_price()
+        current_temp = get_current_temperature()
+        
+        if current_price is None or current_temp is None:
+            return jsonify({"error": "Failed to fetch sensor data"}), 500
+        
         setpoint_temp, adjustment = get_setpoint_temperature(current_price, base_temp)
         
         # Get outdoor temperature
@@ -175,8 +311,6 @@ def api_status():
                 response = requests.get(f"{HA_URL}/api/states/{SWITCH_ENTITY}", headers=headers, timeout=5)
                 if response.status_code == 200:
                     room_heater_state = response.json().get("state")
-                else:
-                    print(f"Failed to get room heater state: HTTP {response.status_code}")
             except Exception as e:
                 print(f"Error fetching room heater state: {e}")
         
