@@ -3,6 +3,7 @@ Web GUI for Temperature Control System
 """
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
+from flask_caching import Cache
 import os
 import json
 from datetime import datetime
@@ -116,6 +117,9 @@ def get_base_temperature_from_input():
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for API endpoints
+
+# Initialize caching with 5-minute timeout for history data
+cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 300})
 
 
 @app.route('/')
@@ -265,11 +269,15 @@ def api_trigger():
 
 
 @app.route('/api/history')
+@cache.cached(timeout=300, query_string=True)
 def api_history():
-    """Get historical data from Home Assistant.
+    """Get historical data from Home Assistant (cached for 5 minutes).
     
     Query parameters:
     - hours: Number of hours to look back (default: 24)
+    
+    Note: Results are cached based on the hours parameter to avoid repeated slow HA API calls.
+    Cache key includes query string so different hour values get cached separately.
     """
     try:
         hours = int(request.args.get('hours', 24))
@@ -399,6 +407,16 @@ def api_heating_decisions():
             "count": len(decisions)
         })
     
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear the API cache. Useful when you need fresh data immediately."""
+    try:
+        cache.clear()
+        return jsonify({"status": "success", "message": "Cache cleared"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
