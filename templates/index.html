@@ -517,6 +517,16 @@
                         ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
                         : [];
                     
+                    // Find the state at the start of today (may be from before today)
+                    let stateAtDayStart = 'off'; // Default to off
+                    for (let i = centralHeatingData.length - 1; i >= 0; i--) {
+                        const time = new Date(centralHeatingData[i].timestamp);
+                        if (time <= startOfDay) {
+                            stateAtDayStart = centralHeatingData[i].value;
+                            break;
+                        }
+                    }
+                    
                     // Filter to only include today's data
                     const todayData = centralHeatingData.filter(point => {
                         const time = new Date(point.timestamp);
@@ -526,6 +536,11 @@
                     // Create annotations for blocked periods (when switch is ON, heating is blocked)
                     let annotationIndex = 0;
                     let blockStart = null;
+                    
+                    // If heating was blocked at the start of the day, mark the start
+                    if (stateAtDayStart === 'on') {
+                        blockStart = startOfDay;
+                    }
                     
                     for (let i = 0; i < todayData.length; i++) {
                         const point = todayData[i];
