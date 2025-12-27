@@ -435,9 +435,6 @@ def warm_cache():
     
     while True:
         try:
-            # Wait 15 minutes (900 seconds) between cache warming
-            time.sleep(900)
-            
             # Warm the cache by making a request (will be cached automatically)
             with app.test_client() as client:
                 response = client.get('/api/history?hours=24')
@@ -445,8 +442,13 @@ def warm_cache():
                     logger.info("Cache warmed successfully")
                 else:
                     logger.warning(f"Cache warming failed: {response.status_code}")
+            
+            # Wait 15 minutes (900 seconds) between cache warming
+            time.sleep(900)
         except Exception as e:
             logger.error(f"Error warming cache: {e}")
+            # Still sleep even if there's an error
+            time.sleep(900)
 
 
 def start_cache_warmer():
