@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
+import threading
+import time
 
 # Import functions from main.py
 from main import (
@@ -118,8 +120,9 @@ def get_base_temperature_from_input():
 app = Flask(__name__)
 CORS(app)  # Enable CORS for API endpoints
 
-# Initialize caching with 5-minute timeout for history data
-cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 300})
+# Initialize caching with 15-minute timeout for history data
+# 15 minutes aligns with the control cycle frequency
+cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 900})
 
 
 @app.route('/')
@@ -421,7 +424,41 @@ def clear_cache():
         return jsonify({"error": str(e)}), 500
 
 
+def warm_cache():
+    """Pre-warm the cache by fetching history data every 15 minutes.
+    
+    This background task runs every 15 minutes (synchronized with the main
+    control cycle) to ensure fresh data is cached before users load the page.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    while True:
+        try:
+            # Wait 15 minutes (900 seconds) between cache warming
+            time.sleep(900)
+            
+            # Warm the cache by making a request (will be cached automatically)
+            with app.test_client() as client:
+                response = client.get('/api/history?hours=24')
+                if response.status_code == 200:
+                    logger.info("Cache warmed successfully")
+                else:
+                    logger.warning(f"Cache warming failed: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error warming cache: {e}")
+
+
+def start_cache_warmer():
+    """Start the background cache warming thread."""
+    thread = threading.Thread(target=warm_cache, daemon=True)
+    thread.start()
+
+
 if __name__ == '__main__':
+    # Start cache warming background task
+    start_cache_warmer()
+    
     # Run Flask development server
     port = int(os.getenv('WEB_PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
