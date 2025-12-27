@@ -444,10 +444,20 @@ def api_switch_history():
                 except Exception:
                     continue
         
-        # Find state at start of target date
+        # Sort points by timestamp to ensure correct order
+        points.sort(key=lambda p: p['ts'])
+        
+        print(f"DEBUG switch-history: entity={entity_id}, target_date={target_date}")
+        print(f"DEBUG switch-history: found {len(points)} state changes")
+        for p in points[-10:]:  # Show last 10 points for debugging
+            print(f"  {p['ts']} - {p['state']}")
+        
+        # Find state at start of target date (00:00:00 of that date in local time)
         state_at_day_start = 'off'  # Default: assume OFF
+        target_date_start = datetime.combine(target_date, datetime.min.time())
+        
         for p in reversed(points):
-            if p['ts'].date() < target_date:
+            if p['ts'] < target_date_start:
                 state_at_day_start = p['state']
                 break
         
@@ -455,8 +465,10 @@ def api_switch_history():
         quarters = [state_at_day_start] * 96
         
         # Apply state changes during the target date
+        # Only consider state changes that occurred ON the target date
         for p in points:
-            if p['ts'].date() != target_date:
+            point_date = p['ts'].date()
+            if point_date != target_date:
                 continue
             
             # Calculate which quarter this change happened in
@@ -464,10 +476,18 @@ def api_switch_history():
             minute = p['ts'].minute
             quarter_idx = hour * 4 + minute // 15
             
-            if 0 <= quarter_idx < 96:
-                # From this quarter onwards, use the new state
-                for i in range(quarter_idx, 96):
-                    quarters[i] = p['state']
+            # Clamp to valid range
+            if quarter_idx < 0:
+                quarter_idx = 0
+            elif quarter_idx >= 96:
+                quarter_idx = 95
+            
+            # From this quarter onwards, use the new state
+            for i in range(quarter_idx, 96):
+                quarters[i] = p['state']
+            print(f"DEBUG switch-history: Applied state change at {p['ts']} (quarter {quarter_idx}): set quarters[{quarter_idx}:96] = {p['state']}")
+        
+        print(f"DEBUG switch-history: Final quarters for {target_date}: {quarters}")
         
         return jsonify({
             "entity_id": entity_id,
