@@ -997,6 +997,16 @@
             const roomHeaterEntity = historyData.room_heater_entity;
             const roomHeaterData = roomHeaterEntity && entities[roomHeaterEntity] ? entities[roomHeaterEntity] : [];
             
+            // Find the state of room heater at the start of today (may be from before today)
+            let roomHeaterStateAtDayStart = 'off'; // Default to off
+            for (let i = roomHeaterData.length - 1; i >= 0; i--) {
+                const time = new Date(roomHeaterData[i].timestamp);
+                if (time <= startOfDay) {
+                    roomHeaterStateAtDayStart = roomHeaterData[i].value;
+                    break;
+                }
+            }
+            
             // Prepare temperature dataset
             const tempPoints = tempData.map(p => ({
                 x: new Date(p.timestamp),
@@ -1005,6 +1015,18 @@
             
             // Create a helper function to check if room heater is on at a given time
             function isRoomHeaterOnAt(timestamp) {
+                // First check if we have any data
+                if (roomHeaterData.length === 0) {
+                    return false; // No data, assume heater is off
+                }
+                
+                // If timestamp is before all data, use the initial state
+                const firstDataTime = new Date(roomHeaterData[0].timestamp);
+                if (timestamp < firstDataTime) {
+                    return roomHeaterStateAtDayStart === 'on';
+                }
+                
+                // Find the state at the given timestamp
                 for (let i = 0; i < roomHeaterData.length; i++) {
                     const point = roomHeaterData[i];
                     const pointTime = new Date(point.timestamp);
@@ -1014,7 +1036,8 @@
                         if (i > 0) {
                             return roomHeaterData[i - 1].value === 'on';
                         }
-                        return false;
+                        // No previous point, use initial state
+                        return roomHeaterStateAtDayStart === 'on';
                     }
                 }
                 // If we reach the end, return the last known state
