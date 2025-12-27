@@ -332,6 +332,13 @@
             </div>
             
             <div class="card">
+                <h2>🔥 Huonelämmitin (24 h)</h2>
+                <div class="chart-container" style="height: 200px;">
+                    <canvas id="roomHeaterChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
                 <h2>❄️ Ulkolämpötila (24 h)</h2>
                 <div class="chart-container" style="height: 300px;">
                     <canvas id="outdoorTempChart"></canvas>
@@ -366,6 +373,7 @@
         let tomorrowPriceChart = null;
         let yesterdayPriceChart = null;
         let indoorTempChart = null;
+        let roomHeaterChart = null;
         let outdoorTempChart = null;
         let currentStatus = null;
         
@@ -977,6 +985,7 @@
                 const data = await response.json();
                 updateIndoorTempChart(data);
                 updateOutdoorTempChart(data);
+                updateRoomHeaterChart();
                 
             } catch (error) {
                 console.error('Error loading history:', error);
@@ -1331,6 +1340,131 @@
                     }
                 }
             });
+        }
+        
+        async function updateRoomHeaterChart() {
+            try {
+                // Get room heater entity from configuration
+                const configResponse = await fetch('/api/config');
+                if (!configResponse.ok) {
+                    console.error('Failed to fetch config');
+                    return;
+                }
+                const config = await configResponse.json();
+                const roomHeaterEntity = config.SWITCH_ENTITY;
+                
+                if (!roomHeaterEntity) {
+                    console.warn('Room heater entity not configured');
+                    return;
+                }
+                
+                // Fetch room heater status history
+                const switchHistoryResponse = await fetch(`/api/switch-history?entity_id=${encodeURIComponent(roomHeaterEntity)}`);
+                if (!switchHistoryResponse.ok) {
+                    console.error('Failed to fetch switch history');
+                    return;
+                }
+                const switchData = await switchHistoryResponse.json();
+                
+                const ctx = document.getElementById('roomHeaterChart').getContext('2d');
+                
+                // Convert quarters array to time-series data
+                const now = new Date();
+                const startOfDay = new Date(now);
+                startOfDay.setHours(0, 0, 0, 0);
+                
+                const roomHeaterPoints = switchData.quarters.map((state, index) => {
+                    const hour = Math.floor(index / 4);
+                    const minute = (index % 4) * 15;
+                    const timestamp = new Date(startOfDay);
+                    timestamp.setHours(hour, minute, 0, 0);
+                    
+                    return {
+                        x: timestamp,
+                        y: state === 'on' ? 1 : 0
+                    };
+                });
+                
+                if (roomHeaterChart) {
+                    roomHeaterChart.destroy();
+                }
+                
+                roomHeaterChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        datasets: [
+                            {
+                                label: 'Huonelämmitin ON/OFF',
+                                data: roomHeaterPoints,
+                                backgroundColor: (context) => {
+                                    const dataPoint = context.raw;
+                                    return dataPoint.y === 1 ? 'rgba(220, 53, 69, 0.7)' : 'rgba(108, 117, 125, 0.2)';
+                                },
+                                borderColor: (context) => {
+                                    const dataPoint = context.raw;
+                                    return dataPoint.y === 1 ? '#dc3545' : '#6c757d';
+                                },
+                                borderWidth: 1,
+                                barPercentage: 1.0,
+                                categoryPercentage: 1.0
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'x',
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: {
+                                    boxWidth: 15,
+                                    font: {
+                                        size: 12
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.raw.y === 1 ? 'PÄÄLLÄ' : 'POIS';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'hour',
+                                    displayFormats: {
+                                        hour: 'HH:mm'
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Aika'
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                max: 1,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value === 1 ? 'PÄÄLLÄ' : 'POIS';
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Tila'
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading room heater chart:', error);
+            }
         }
         
         // Auto-refresh every 5 minutes
