@@ -512,10 +512,9 @@
                     const historyData = await response.json();
                     const entities = historyData.entities;
                     
-                    // Find central heating data
-                    const centralHeatingData = Object.keys(entities).find(k => k.includes('5432045dd3f0')) 
-                        ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
-                        : [];
+                    // Find central heating data (provided by backend)
+                    const centralHeatingEntity = historyData.central_heating_entity || null;
+                    const centralHeatingData = (centralHeatingEntity && entities[centralHeatingEntity]) ? entities[centralHeatingEntity] : [];
                     
                     // Find the state at the start of today (may be from before today)
                     let stateAtDayStart = 'off'; // Default to off
@@ -760,9 +759,9 @@
                     const entities = historyData.entities;
                     
                     // Find central heating data
-                    const centralHeatingData = Object.keys(entities).find(k => k.includes('5432045dd3f0')) 
-                        ? entities[Object.keys(entities).find(k => k.includes('5432045dd3f0'))] 
-                        : [];
+                    // Find central heating data (provided by backend)
+                    const centralHeatingEntity = historyData.central_heating_entity || null;
+                    const centralHeatingData = (centralHeatingEntity && entities[centralHeatingEntity]) ? entities[centralHeatingEntity] : [];
                     
                     // Get yesterday's date boundaries in local time
                     const now = new Date();
@@ -1018,21 +1017,6 @@
                 y: typeof p.value === 'number' ? p.value : null
             })).filter(p => p.y !== null);
             
-            // Create a dataset that shows when room heater is ON
-            // This will be a background fill that appears when heating is active
-            let roomHeaterIndicatorData = [];
-            if (tempPoints.length > 0) {
-                for (let i = 0; i < tempPoints.length; i++) {
-                    const point = tempPoints[i];
-                    if (isRoomHeaterOnAt(point.x)) {
-                        roomHeaterIndicatorData.push({
-                            x: point.x,
-                            y: 30 // High value to fill the chart
-                        });
-                    }
-                }
-            }
-            
             // Create a helper function to check if room heater is on at a given time
             function isRoomHeaterOnAt(timestamp) {
                 // First check if we have any data
@@ -1066,17 +1050,7 @@
                 return isOn;
             }
             
-            // Debug: Log room heater data
-            console.log('Room heater entity:', roomHeaterEntity);
-            console.log('Room heater data points:', roomHeaterData.length);
-            console.log('Room heater state at day start:', roomHeaterStateAtDayStart);
-            if (roomHeaterData.length > 0) {
-                console.log('First room heater point:', roomHeaterData[0]);
-                console.log('Last room heater point:', roomHeaterData[roomHeaterData.length - 1]);
-            }
-            
-            // Create empty annotations object (room heater coloring will be handled by segment colors)
-            const annotations = {};
+            // Room heater visualization removed from client-side (handled server-side or via central heating endpoint)
             
             if (indoorTempChart) {
                 indoorTempChart.destroy();
@@ -1203,18 +1177,6 @@
                             stepped: true,
                             pointRadius: 1,
                             borderWidth: 3
-                        },
-                        {
-                            label: 'Huonelämmitin päällä',
-                            data: roomHeaterIndicatorData,
-                            borderColor: 'rgba(220, 53, 69, 0)',
-                            backgroundColor: 'rgba(220, 53, 69, 0.15)',
-                            yAxisID: 'y',
-                            fill: true,
-                            pointRadius: 0,
-                            borderWidth: 0,
-                            stepped: true,
-                            hidden: false
                         }
                     ]
                 },
@@ -1237,16 +1199,8 @@
                                     return true;
                                 },
                                 generateLabels: function(chart) {
-                                    const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
-                                    // Add custom legend item for room heater
-                                    original.push({
-                                        text: 'Huonelämmitin päällä',
-                                        fillStyle: 'rgba(220, 53, 69, 0.3)',
-                                        strokeStyle: 'rgba(220, 53, 69, 0.3)',
-                                        lineWidth: 0,
-                                        hidden: false
-                                    });
-                                    return original;
+                                    // Return default legend items only
+                                    return Chart.defaults.plugins.legend.labels.generateLabels(chart);
                                 }
                             }
                         },

@@ -249,6 +249,101 @@ def api_status():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/switch-history')
+@cache.cached(timeout=300, query_string=True)
+def api_switch_history():
+    """Get switch ON/OFF state for each quarter-hour (0-95) for a given day and entity.
+    
+    Query parameters:
+    - entity_id: Home Assistant entity ID (e.g., switch.central_heating)
+    - date: YYYY-MM-DD (default: today)
+    
+    Returns:
+    {
+        "entity_id": "switch.xxx",
+        "date": "2025-12-27",
+        "quarters": [0-95 values, one per 15-min interval]
+                    "on" or "off" string for each quarter
+    }
+    
+    Perfect for displaying switch states aligned with 15-minute price/control cycles.
+    """
+    try:
+        from datetime import timedelta, timezone
+        
+        entity_id = request.args.get('entity_id')
+        date_str = request.args.get('date')
+        
+        if not entity_id:
+            return jsonify({"error": "entity_id parameter required"}), 400
+        
+        # Default to today
+        if not date_str:
+            target_date = datetime.now().date()
+            date_str = target_date.isoformat()
+        else:
+            target_date = datetime.fromisoformat(date_str).date()
+        
+        # Fetch 48h of history to get state at start of target date
+        now_utc = datetime.now(timezone.utc)
+        start_utc = now_utc - timedelta(hours=48)
+        start_iso = start_utc.replace(tzinfo=None).isoformat()
+        end_utc = now_utc + timedelta(hours=1)
+        end_iso = end_utc.replace(tzinfo=None).isoformat()
+        
+        url = f"{HA_URL}/api/history/period/{start_iso}?filter_entity_id={entity_id}&end_time={end_iso}"
+        resp = requests.get(url, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            return jsonify({"error": f"HA API returned {resp.status_code}"}), 500
+        
+        history = resp.json()
+        
+        # Parse all state changes
+        points = []
+        if history and len(history) > 0 and len(history[0]) > 0:
+            for s in history[0]:
+                ts_str = s.get('last_changed')
+                state = s.get('state')
+                try:
+                    dt = datetime.fromisoformat(ts_str)
+                    points.append({"ts": dt, "state": state})
+                except Exception:
+                    continue
+        
+        # Find state at start of target date
+        state_at_day_start = 'off'  # Default: assume OFF
+        for p in reversed(points):
+            if p['ts'].date() < target_date:
+                state_at_day_start = p['state']
+                break
+        
+        # Initialize all 96 quarters with the starting state
+        quarters = [state_at_day_start] * 96
+        
+        # Apply state changes during the target date
+        for p in points:
+            if p['ts'].date() != target_date:
+                continue
+            
+            # Calculate which quarter this change happened in
+            hour = p['ts'].hour
+            minute = p['ts'].minute
+            quarter_idx = hour * 4 + minute // 15
+            
+            if 0 <= quarter_idx < 96:
+                # From this quarter onwards, use the new state
+                for i in range(quarter_idx, 96):
+                    quarters[i] = p['state']
+        
+        return jsonify({
+            "entity_id": entity_id,
+            "date": date_str,
+            "quarters": quarters
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():
     """Get or update configuration."""
@@ -357,7 +452,8 @@ def api_history():
             "outdoor_temperature_entity": OUTDOOR_TEMP_SENSOR,
             "setpoint_entity": SETPOINT_OUTPUT,
             "base_temperature_entity": BASE_TEMPERATURE_INPUT,
-            "room_heater_entity": SWITCH_ENTITY
+            "room_heater_entity": SWITCH_ENTITY,
+            "central_heating_entity": CENTRAL_HEATING_SHUTOFF_SWITCH
         }
         
         # HA returns an array where each element is the history for one entity
