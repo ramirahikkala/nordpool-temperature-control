@@ -383,6 +383,52 @@ def api_status():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/switch-history-debug')
+def api_switch_history_debug():
+    """Debug endpoint to show raw HA history for a switch."""
+    try:
+        from datetime import timedelta, timezone
+        
+        entity_id = request.args.get('entity_id')
+        
+        if not entity_id:
+            return jsonify({"error": "entity_id parameter required"}), 400
+        
+        # Fetch 48h of history
+        now_utc = datetime.now(timezone.utc)
+        start_utc = now_utc - timedelta(hours=48)
+        start_iso = start_utc.replace(tzinfo=None).isoformat()
+        end_utc = now_utc + timedelta(hours=1)
+        end_iso = end_utc.replace(tzinfo=None).isoformat()
+        
+        url = f"{HA_URL}/api/history/period/{start_iso}?filter_entity_id={entity_id}&end_time={end_iso}"
+        resp = requests.get(url, headers=headers, timeout=30)
+        
+        if resp.status_code != 200:
+            return jsonify({"error": f"HA API returned {resp.status_code}"}), 500
+        
+        history = resp.json()
+        
+        # Return raw history
+        raw_points = []
+        if history and len(history) > 0 and len(history[0]) > 0:
+            for s in history[0]:
+                ts_str = s.get('last_changed')
+                state = s.get('state')
+                raw_points.append({
+                    "timestamp": ts_str,
+                    "state": state
+                })
+        
+        return jsonify({
+            "entity_id": entity_id,
+            "raw_points": raw_points,
+            "count": len(raw_points)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/switch-history')
 @cache.cached(timeout=300, query_string=True)
 def api_switch_history():
@@ -460,6 +506,8 @@ def api_switch_history():
             if p['ts'] < target_date_start:
                 state_at_day_start = p['state']
                 break
+        
+        print(f"DEBUG switch-history: state_at_day_start = {state_at_day_start}")
         
         # Initialize all 96 quarters with the starting state
         quarters = [state_at_day_start] * 96
