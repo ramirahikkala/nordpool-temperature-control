@@ -124,6 +124,22 @@ CORS(app)  # Enable CORS for API endpoints
 # 15 minutes aligns with the control cycle frequency
 cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 900})
 
+# Track if cache warmer has been started (to prevent multiple instances)
+_cache_warmer_started = False
+
+
+def start_cache_warmer_once():
+    """Start cache warmer only once, even if module is loaded multiple times."""
+    global _cache_warmer_started
+    if not _cache_warmer_started:
+        thread = threading.Thread(target=warm_cache, daemon=True)
+        thread.start()
+        _cache_warmer_started = True
+
+
+# Start cache warmer when module is imported (this runs for both dev and gunicorn)
+start_cache_warmer_once()
+
 
 @app.route('/')
 def index():
@@ -453,8 +469,7 @@ def warm_cache():
 
 def start_cache_warmer():
     """Start the background cache warming thread."""
-    thread = threading.Thread(target=warm_cache, daemon=True)
-    thread.start()
+    start_cache_warmer_once()
 
 
 if __name__ == '__main__':
