@@ -137,10 +137,6 @@ def start_cache_warmer_once():
         _cache_warmer_started = True
 
 
-# Start cache warmer when module is imported (this runs for both dev and gunicorn)
-start_cache_warmer_once()
-
-
 @app.route('/')
 def index():
     """Render the main dashboard."""
@@ -465,6 +461,11 @@ def warm_cache():
             logger.error(f"Error warming cache: {e}")
             # Still sleep even if there's an error
             time.sleep(900)
+
+
+# Start cache warmer when module is imported (runs for both gunicorn and __main__)
+# This must be after warm_cache() is defined
+start_cache_warmer_once()
 
 
 def start_cache_warmer():
