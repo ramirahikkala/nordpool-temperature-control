@@ -144,8 +144,9 @@ def index():
 
 
 @app.route('/api/status')
+@cache.cached(timeout=300, query_string=True)
 def api_status():
-    """Get current system status."""
+    """Get current system status (cached for 5 minutes)."""
     try:
         # Get current values
         base_temp = get_base_temperature_from_input()
@@ -394,10 +395,10 @@ def api_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/heating-decisions')
+@cache.cached(timeout=300, query_string=True)
 def api_heating_decisions():
-    """Get heating decisions log.
+    """Get heating decisions log (cached for 5 minutes).
     
     Query parameters:
     - date: Date in YYYY-MM-DD format (default: today)
