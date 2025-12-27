@@ -987,6 +987,11 @@
         function updateIndoorTempChart(historyData) {
             const ctx = document.getElementById('indoorTempChart').getContext('2d');
             
+            // Define start of day in local time
+            const now = new Date();
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+            
             const entities = historyData.entities;
             
             // Use explicitly provided entity IDs from backend
