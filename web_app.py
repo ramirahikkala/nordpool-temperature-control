@@ -482,14 +482,19 @@ def api_switch_history():
 def api_config():
     """Get or update configuration."""
     if request.method == 'GET':
-        # Return current config
+        # Return current config including entity IDs
         return jsonify({
             "BASE_TEMPERATURE": BASE_TEMPERATURE_FALLBACK,
             "MAX_SHUTOFF_HOURS": MAX_SHUTOFF_HOURS,
             "PRICE_ALWAYS_ON_THRESHOLD": PRICE_ALWAYS_ON_THRESHOLD,
             "PRICE_LOW_THRESHOLD": PRICE_LOW_THRESHOLD,
             "PRICE_HIGH_THRESHOLD": PRICE_HIGH_THRESHOLD,
-            "TEMP_VARIATION": TEMP_VARIATION
+            "TEMP_VARIATION": TEMP_VARIATION,
+            "TEMPERATURE_SENSOR": TEMPERATURE_SENSOR,
+            "OUTDOOR_TEMP_SENSOR": OUTDOOR_TEMP_SENSOR,
+            "SWITCH_ENTITY": SWITCH_ENTITY,
+            "CENTRAL_HEATING_SHUTOFF_SWITCH": CENTRAL_HEATING_SHUTOFF_SWITCH,
+            "PRICE_SENSOR": PRICE_SENSOR
         })
     
     elif request.method == 'POST':
