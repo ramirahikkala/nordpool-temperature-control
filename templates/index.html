@@ -1018,6 +1018,21 @@
                 y: typeof p.value === 'number' ? p.value : null
             })).filter(p => p.y !== null);
             
+            // Create a dataset that shows when room heater is ON
+            // This will be a background fill that appears when heating is active
+            let roomHeaterIndicatorData = [];
+            if (tempPoints.length > 0) {
+                for (let i = 0; i < tempPoints.length; i++) {
+                    const point = tempPoints[i];
+                    if (isRoomHeaterOnAt(point.x)) {
+                        roomHeaterIndicatorData.push({
+                            x: point.x,
+                            y: 30 // High value to fill the chart
+                        });
+                    }
+                }
+            }
+            
             // Create a helper function to check if room heater is on at a given time
             function isRoomHeaterOnAt(timestamp) {
                 // First check if we have any data
@@ -1039,14 +1054,25 @@
                     if (pointTime > timestamp) {
                         // We've passed the timestamp, return the state from the previous point
                         if (i > 0) {
-                            return roomHeaterData[i - 1].value === 'on';
+                            const isOn = roomHeaterData[i - 1].value === 'on';
+                            return isOn;
                         }
                         // No previous point, use initial state
                         return roomHeaterStateAtDayStart === 'on';
                     }
                 }
                 // If we reach the end, return the last known state
-                return roomHeaterData.length > 0 && roomHeaterData[roomHeaterData.length - 1].value === 'on';
+                const isOn = roomHeaterData.length > 0 && roomHeaterData[roomHeaterData.length - 1].value === 'on';
+                return isOn;
+            }
+            
+            // Debug: Log room heater data
+            console.log('Room heater entity:', roomHeaterEntity);
+            console.log('Room heater data points:', roomHeaterData.length);
+            console.log('Room heater state at day start:', roomHeaterStateAtDayStart);
+            if (roomHeaterData.length > 0) {
+                console.log('First room heater point:', roomHeaterData[0]);
+                console.log('Last room heater point:', roomHeaterData[roomHeaterData.length - 1]);
             }
             
             // Create empty annotations object (room heater coloring will be handled by segment colors)
@@ -1177,6 +1203,18 @@
                             stepped: true,
                             pointRadius: 1,
                             borderWidth: 3
+                        },
+                        {
+                            label: 'Huonelämmitin päällä',
+                            data: roomHeaterIndicatorData,
+                            borderColor: 'rgba(220, 53, 69, 0)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.15)',
+                            yAxisID: 'y',
+                            fill: true,
+                            pointRadius: 0,
+                            borderWidth: 0,
+                            stepped: true,
+                            hidden: false
                         }
                     ]
                 },
