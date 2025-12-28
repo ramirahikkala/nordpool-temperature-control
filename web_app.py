@@ -385,18 +385,28 @@ def api_status():
 
 @app.route('/api/switch-history-debug')
 def api_switch_history_debug():
-    """Debug endpoint to show raw HA history for a switch."""
+    """Debug endpoint to show detailed processing of switch history."""
     try:
         from datetime import timedelta, timezone
+        import pytz
         
         entity_id = request.args.get('entity_id')
+        hours_str = request.args.get('hours', '24')
         
         if not entity_id:
             return jsonify({"error": "entity_id parameter required"}), 400
         
-        # Fetch 48h of history
+        try:
+            hours = int(hours_str)
+        except (ValueError, TypeError):
+            hours = 24
+        
+        local_tz = pytz.timezone('Europe/Helsinki')
+        
+        # Fetch 72h of history
         now_utc = datetime.now(timezone.utc)
-        start_utc = now_utc - timedelta(hours=48)
+        lookback_hours = max(hours * 2 + 12, 72)
+        start_utc = now_utc - timedelta(hours=lookback_hours)
         start_iso = start_utc.replace(tzinfo=None).isoformat()
         end_utc = now_utc + timedelta(hours=1)
         end_iso = end_utc.replace(tzinfo=None).isoformat()
@@ -409,41 +419,84 @@ def api_switch_history_debug():
         
         history = resp.json()
         
-        # Return raw history
+        # Parse all state changes
+        points = []
         raw_points = []
         if history and len(history) > 0 and len(history[0]) > 0:
             for s in history[0]:
                 ts_str = s.get('last_changed')
                 state = s.get('state')
-                raw_points.append({
-                    "timestamp": ts_str,
-                    "state": state
-                })
+                raw_points.append({"timestamp": ts_str, "state": state})
+                try:
+                    dt_utc = datetime.fromisoformat(ts_str)
+                    if dt_utc.tzinfo is None:
+                        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+                    dt_local = dt_utc.astimezone(local_tz)
+                    points.append({"ts": dt_local, "state": state})
+                except Exception as e:
+                    print(f"DEBUG: Error parsing {ts_str}: {e}")
+        
+        points.sort(key=lambda p: p['ts'])
+        
+        # Calculate period
+        target_date_end = datetime.now(local_tz).replace(microsecond=0)
+        target_date_start = target_date_end - timedelta(hours=hours)
+        
+        # Find initial state
+        state_at_period_start = 'off'
+        for p in points:
+            if p['ts'] <= target_date_start:
+                state_at_period_start = p['state']
+            else:
+                break
+        
+        # Count state changes in period
+        changes_in_period = [p for p in points if target_date_start < p['ts'] <= target_date_end]
         
         return jsonify({
             "entity_id": entity_id,
-            "raw_points": raw_points,
-            "count": len(raw_points)
+            "hours": hours,
+            "lookback_hours": lookback_hours,
+            "period_start": target_date_start.isoformat(),
+            "period_end": target_date_end.isoformat(),
+            "state_at_period_start": state_at_period_start,
+            "total_points": len(points),
+            "points_in_period": len(changes_in_period),
+            "raw_points": raw_points[-10:],  # Last 10 points
+            "parsed_points": [{"ts": str(p['ts']), "state": p['state']} for p in points[-10:]],  # Last 10
+            "changes_in_period": [{"ts": str(p['ts']), "state": p['state']} for p in changes_in_period]
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/api/switch-history')
 @cache.cached(timeout=300, query_string=True)
 def api_switch_history():
-    """Get switch ON/OFF state for each quarter-hour (0-95) for a given day and entity.
+    """Get switch ON/OFF state for each quarter-hour (0-95) for a given period and entity.
     
     Query parameters:
-    - entity_id: Home Assistant entity ID (e.g., switch.central_heating)
-    - date: YYYY-MM-DD (default: today)
+    - entity_id: Home Assistant entity ID (e.g., switch.central_heating) [REQUIRED]
+    - date: YYYY-MM-DD (optional) - specific date to analyze
+    - hours: number of hours to look back (optional, default: 24) - if used, date is ignored
     
-    Returns:
+    Returns for date mode:
     {
         "entity_id": "switch.xxx",
         "date": "2025-12-27",
-        "quarters": [0-95 values, one per 15-min interval]
-                    "on" or "off" string for each quarter
+        "quarters": [0-95 values, one per 15-min interval],
+        "mode": "date"
+    }
+    
+    Returns for hours mode:
+    {
+        "entity_id": "switch.xxx",
+        "hours": 24,
+        "quarters": [0-95 values for last 24 hours],
+        "mode": "hours"
     }
     
     Perfect for displaying switch states aligned with 15-minute price/control cycles.
@@ -455,23 +508,25 @@ def api_switch_history():
         
         entity_id = request.args.get('entity_id')
         date_str = request.args.get('date')
+        hours_str = request.args.get('hours', '24')
         
         if not entity_id:
             return jsonify({"error": "entity_id parameter required"}), 400
         
-        # Default to today
-        if not date_str:
-            target_date = datetime.now().date()
-            date_str = target_date.isoformat()
-        else:
-            target_date = datetime.fromisoformat(date_str).date()
+        try:
+            hours = int(hours_str)
+        except (ValueError, TypeError):
+            hours = 24
         
         # Use Finland timezone (Europe/Helsinki: UTC+2 in winter, UTC+3 in summer)
         local_tz = pytz.timezone('Europe/Helsinki')
         
-        # Fetch 48h of history to get state at start of target date
+        # Fetch history (get extra buffer to ensure we capture all changes)
         now_utc = datetime.now(timezone.utc)
-        start_utc = now_utc - timedelta(hours=48)
+        # For 24h mode, we need at least 48h lookback (24h buffer + 24h for analysis)
+        # Add extra time for safety margin and timezone edge cases
+        lookback_hours = max(hours * 2 + 12, 72)  # Generous lookback
+        start_utc = now_utc - timedelta(hours=lookback_hours)
         start_iso = start_utc.replace(tzinfo=None).isoformat()
         end_utc = now_utc + timedelta(hours=1)
         end_iso = end_utc.replace(tzinfo=None).isoformat()
@@ -508,31 +563,52 @@ def api_switch_history():
         # Sort points by timestamp to ensure correct order
         points.sort(key=lambda p: p['ts'])
         
-        # Find state at start of target date (00:00:00 of that date in local time)
-        state_at_day_start = 'off'  # Default: assume OFF
-        target_date_start = datetime.combine(target_date, datetime.min.time())
+        # Determine target period
+        if date_str:
+            # Date mode: analyze specific date YYYY-MM-DD
+            target_date = datetime.fromisoformat(date_str).date()
+            # Create timezone-aware datetimes for consistent comparison
+            target_date_start = local_tz.localize(datetime.combine(target_date, datetime.min.time()))
+            target_date_end = local_tz.localize(datetime.combine(target_date, datetime.max.time()))
+            period_label = date_str
+            mode = "date"
+        else:
+            # Hours mode: analyze last N hours (default 24)
+            target_date_end = datetime.now(local_tz).replace(microsecond=0)
+            target_date_start = target_date_end - timedelta(hours=hours)
+            target_date = target_date_end.date()  # For compatibility
+            period_label = str(hours)
+            mode = "hours"
         
-        for p in reversed(points):
-            if p['ts'].date() < target_date:
-                state_at_day_start = p['state']
+        # Find state at start of period
+        # We need the state that was active at target_date_start
+        # Since points are sorted chronologically, find the last point <= target_date_start
+        state_at_period_start = 'off'  # Default: assume OFF if no data
+        
+        for p in points:
+            if p['ts'] <= target_date_start:
+                # This point is at or before the period start
+                # Keep updating to get the most recent point before period start
+                state_at_period_start = p['state']
+            else:
+                # We've passed the target start, stop looking
                 break
         
         # Initialize all 96 quarters with the starting state
-        quarters = [state_at_day_start] * 96
+        quarters = [state_at_period_start] * 96
         
-        # Apply state changes during the target date
-        # Only consider state changes that occurred ON the target date (in local time)
+        # Apply state changes during the period
         for p in points:
-            point_date = p['ts'].date()
-            if point_date != target_date:
+            if not (target_date_start <= p['ts'] <= target_date_end):
                 continue
             
-            # Calculate which quarter this change happened in (using local time)
-            hour = p['ts'].hour
-            minute = p['ts'].minute
-            quarter_idx = hour * 4 + minute // 15
+            # Calculate which quarter this change happened in
+            # Quarter 0 = start of period, Quarter 95 = end of period (for 24h mode)
+            time_into_period = p['ts'] - target_date_start
+            minutes_into_period = int(time_into_period.total_seconds() / 60)
+            quarter_idx = minutes_into_period // 15
             
-            # Clamp to valid range
+            # Clamp to valid range (should normally be 0-95 for 24h)
             if quarter_idx < 0:
                 quarter_idx = 0
             elif quarter_idx >= 96:
@@ -542,12 +618,21 @@ def api_switch_history():
             for i in range(quarter_idx, 96):
                 quarters[i] = p['state']
         
-        return jsonify({
+        result = {
             "entity_id": entity_id,
-            "date": date_str,
-            "quarters": quarters
-        })
+            "quarters": quarters,
+            "mode": mode
+        }
+        
+        if mode == "date":
+            result["date"] = date_str
+        else:
+            result["hours"] = hours
+        
+        return jsonify(result)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
