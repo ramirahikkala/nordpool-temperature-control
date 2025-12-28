@@ -447,9 +447,11 @@ def api_switch_history():
     }
     
     Perfect for displaying switch states aligned with 15-minute price/control cycles.
+    NOTE: HA returns UTC timestamps, we convert to local time for accurate quarter calculation.
     """
     try:
         from datetime import timedelta, timezone
+        import pytz
         
         entity_id = request.args.get('entity_id')
         date_str = request.args.get('date')
@@ -463,6 +465,9 @@ def api_switch_history():
             date_str = target_date.isoformat()
         else:
             target_date = datetime.fromisoformat(date_str).date()
+        
+        # Use Finland timezone (Europe/Helsinki: UTC+2 in winter, UTC+3 in summer)
+        local_tz = pytz.timezone('Europe/Helsinki')
         
         # Fetch 48h of history to get state at start of target date
         now_utc = datetime.now(timezone.utc)
@@ -478,48 +483,51 @@ def api_switch_history():
         
         history = resp.json()
         
-        # Parse all state changes
+        # Parse all state changes and convert from UTC to local time
         points = []
         if history and len(history) > 0 and len(history[0]) > 0:
             for s in history[0]:
                 ts_str = s.get('last_changed')
                 state = s.get('state')
                 try:
-                    dt = datetime.fromisoformat(ts_str)
-                    points.append({"ts": dt, "state": state})
-                except Exception:
+                    # Parse UTC timestamp (includes +00:00 timezone info)
+                    dt_utc = datetime.fromisoformat(ts_str)
+                    
+                    # Ensure it has UTC timezone info
+                    if dt_utc.tzinfo is None:
+                        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+                    
+                    # Convert to local timezone
+                    dt_local = dt_utc.astimezone(local_tz)
+                    
+                    points.append({"ts": dt_local, "state": state})
+                except Exception as e:
+                    print(f"DEBUG: Error parsing timestamp {ts_str}: {e}")
                     continue
         
         # Sort points by timestamp to ensure correct order
         points.sort(key=lambda p: p['ts'])
-        
-        print(f"DEBUG switch-history: entity={entity_id}, target_date={target_date}")
-        print(f"DEBUG switch-history: found {len(points)} state changes")
-        for p in points[-10:]:  # Show last 10 points for debugging
-            print(f"  {p['ts']} - {p['state']}")
         
         # Find state at start of target date (00:00:00 of that date in local time)
         state_at_day_start = 'off'  # Default: assume OFF
         target_date_start = datetime.combine(target_date, datetime.min.time())
         
         for p in reversed(points):
-            if p['ts'] < target_date_start:
+            if p['ts'].date() < target_date:
                 state_at_day_start = p['state']
                 break
-        
-        print(f"DEBUG switch-history: state_at_day_start = {state_at_day_start}")
         
         # Initialize all 96 quarters with the starting state
         quarters = [state_at_day_start] * 96
         
         # Apply state changes during the target date
-        # Only consider state changes that occurred ON the target date
+        # Only consider state changes that occurred ON the target date (in local time)
         for p in points:
             point_date = p['ts'].date()
             if point_date != target_date:
                 continue
             
-            # Calculate which quarter this change happened in
+            # Calculate which quarter this change happened in (using local time)
             hour = p['ts'].hour
             minute = p['ts'].minute
             quarter_idx = hour * 4 + minute // 15
@@ -533,9 +541,6 @@ def api_switch_history():
             # From this quarter onwards, use the new state
             for i in range(quarter_idx, 96):
                 quarters[i] = p['state']
-            print(f"DEBUG switch-history: Applied state change at {p['ts']} (quarter {quarter_idx}): set quarters[{quarter_idx}:96] = {p['state']}")
-        
-        print(f"DEBUG switch-history: Final quarters for {target_date}: {quarters}")
         
         return jsonify({
             "entity_id": entity_id,
