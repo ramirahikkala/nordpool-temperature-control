@@ -1358,8 +1358,8 @@
                     return;
                 }
                 
-                // Fetch room heater status history
-                const switchHistoryResponse = await fetch(`/api/switch-history?entity_id=${encodeURIComponent(roomHeaterEntity)}`);
+                // Fetch room heater status history for last 24 hours (matching history chart)
+                const switchHistoryResponse = await fetch(`/api/switch-history?entity_id=${encodeURIComponent(roomHeaterEntity)}&hours=24`);
                 if (!switchHistoryResponse.ok) {
                     console.error('Failed to fetch switch history');
                     return;
@@ -1368,16 +1368,13 @@
                 
                 const ctx = document.getElementById('roomHeaterChart').getContext('2d');
                 
-                // Convert quarters array to time-series data
+                // Calculate time range for last 24 hours
                 const now = new Date();
-                const startOfDay = new Date(now);
-                startOfDay.setHours(0, 0, 0, 0);
+                const last24hStart = new Date(now - 24 * 60 * 60 * 1000);
                 
                 const roomHeaterPoints = switchData.quarters.map((state, index) => {
-                    const hour = Math.floor(index / 4);
-                    const minute = (index % 4) * 15;
-                    const timestamp = new Date(startOfDay);
-                    timestamp.setHours(hour, minute, 0, 0);
+                    const timestamp = new Date(last24hStart);
+                    timestamp.setMinutes(timestamp.getMinutes() + index * 15);
                     
                     return {
                         x: timestamp,
@@ -1435,15 +1432,18 @@
                         scales: {
                             x: {
                                 type: 'time',
+                                min: last24hStart.getTime(),
+                                max: now.getTime(),
                                 time: {
                                     unit: 'hour',
+                                    stepSize: 2,
                                     displayFormats: {
                                         hour: 'HH:mm'
                                     }
                                 },
                                 title: {
                                     display: true,
-                                    text: 'Aika'
+                                    text: 'Aika (viimeiset 24 h)'
                                 }
                             },
                             y: {
