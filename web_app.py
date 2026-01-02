@@ -831,7 +831,7 @@ def clear_cache():
 
 
 def warm_cache():
-    """Pre-warm the cache by fetching history data every 15 minutes.
+    """Pre-warm the cache by fetching all key endpoints every 15 minutes.
     
     This background task runs every 15 minutes (synchronized with the main
     control cycle) to ensure fresh data is cached before users load the page.
@@ -839,20 +839,37 @@ def warm_cache():
     import logging
     logger = logging.getLogger(__name__)
     
+    # Endpoints to warm
+    endpoints_to_warm = [
+        '/api/current-state',
+        '/api/switches-state',
+        '/api/prices',
+        '/api/central-heating-decision',
+        '/api/status',
+        '/api/history?hours=24',
+        '/api/switch-history?entity_id=switch.shelly1minig3_5432044efb74_switch_0&hours=24',
+        '/api/heating-decisions?limit=20',
+    ]
+    
     while True:
         try:
-            # Warm the cache by making a request (will be cached automatically)
             with app.test_client() as client:
-                response = client.get('/api/history?hours=24')
-                if response.status_code == 200:
-                    logger.info("Cache warmed successfully")
-                else:
-                    logger.warning(f"Cache warming failed: {response.status_code}")
+                for endpoint in endpoints_to_warm:
+                    try:
+                        response = client.get(endpoint)
+                        if response.status_code == 200:
+                            logger.debug(f"Warmed {endpoint}")
+                        else:
+                            logger.warning(f"Failed to warm {endpoint}: HTTP {response.status_code}")
+                    except Exception as e:
+                        logger.error(f"Error warming {endpoint}: {e}")
+                
+                logger.info("Cache warming cycle completed")
             
             # Wait 15 minutes (900 seconds) between cache warming
             time.sleep(900)
         except Exception as e:
-            logger.error(f"Error warming cache: {e}")
+            logger.error(f"Error in cache warmer: {e}")
             # Still sleep even if there's an error
             time.sleep(900)
 
