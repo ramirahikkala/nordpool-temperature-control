@@ -732,12 +732,19 @@ def api_history():
         end_time = end_time_utc.replace(tzinfo=None).isoformat()
         url = f"{HA_URL}/api/history/period/{start_time_iso}?filter_entity_id={entity_filter}&end_time={end_time}"
         
+        print(f"DEBUG: Querying HA history API")
+        print(f"DEBUG: URL: {url}")
+        print(f"DEBUG: Entities: {entities}")
+        
         response = requests.get(url, headers=headers, timeout=30)
         
         if response.status_code != 200:
-            return jsonify({"error": f"HA API returned {response.status_code}"}), 500
+            print(f"DEBUG: HA API error {response.status_code}")
+            print(f"DEBUG: Response: {response.text}")
+            return jsonify({"error": f"HA API returned {response.status_code}: {response.text}"}), 500
         
         history_data = response.json()
+        print(f"DEBUG: Got {len(history_data)} entity histories")
         
         # Transform the data into a more usable format
         result = {
