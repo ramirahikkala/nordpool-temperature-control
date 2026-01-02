@@ -687,6 +687,9 @@ def api_history():
     Note: Results are cached based on the hours parameter to avoid repeated slow HA API calls.
     Cache key includes query string so different hour values get cached separately.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         hours = int(request.args.get('hours', 24))
         
@@ -723,6 +726,9 @@ def api_history():
             if BASE_TEMPERATURE_INPUT not in entities:
                 entities.append(BASE_TEMPERATURE_INPUT)
         
+        logger.info(f"api_history: Querying {len(entities)} entities for {hours}h")
+        logger.info(f"api_history: Entities: {entities}")
+        
         # Query HA history API
         # Format: /api/history/period/<start_time>?filter_entity_id=entity1,entity2&end_time=<end_time>
         # NOTE: HA API requires explicit end_time for complete results, otherwise it limits responses
@@ -732,19 +738,17 @@ def api_history():
         end_time = end_time_utc.replace(tzinfo=None).isoformat()
         url = f"{HA_URL}/api/history/period/{start_time_iso}?filter_entity_id={entity_filter}&end_time={end_time}"
         
-        print(f"DEBUG: Querying HA history API")
-        print(f"DEBUG: URL: {url}")
-        print(f"DEBUG: Entities: {entities}")
+        logger.info(f"api_history: URL: {url}")
         
         response = requests.get(url, headers=headers, timeout=30)
         
         if response.status_code != 200:
-            print(f"DEBUG: HA API error {response.status_code}")
-            print(f"DEBUG: Response: {response.text}")
-            return jsonify({"error": f"HA API returned {response.status_code}: {response.text}"}), 500
+            logger.error(f"api_history: HA API error {response.status_code}")
+            logger.error(f"api_history: Response: {response.text[:500]}")
+            return jsonify({"error": f"HA API returned {response.status_code}: {response.text[:200]}"}), 500
         
         history_data = response.json()
-        print(f"DEBUG: Got {len(history_data)} entity histories")
+        logger.info(f"api_history: Got {len(history_data)} entity histories")
         
         # Transform the data into a more usable format
         result = {
@@ -793,7 +797,11 @@ def api_history():
         return jsonify(result)
     
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"api_history exception: {str(e)}")
+        logger.error(f"api_history traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 @app.route('/api/heating-decisions')
 @cache.cached(timeout=900, query_string=True)
