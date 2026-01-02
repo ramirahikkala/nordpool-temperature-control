@@ -412,7 +412,7 @@ def api_switch_history_debug():
         end_iso = end_utc.replace(tzinfo=None).isoformat()
         
         url = f"{HA_URL}/api/history/period/{start_iso}?filter_entity_id={entity_id}&end_time={end_iso}"
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = requests.get(url, headers=headers, timeout=60)
         
         if resp.status_code != 200:
             return jsonify({"error": f"HA API returned {resp.status_code}"}), 500
@@ -532,7 +532,7 @@ def api_switch_history():
         end_iso = end_utc.replace(tzinfo=None).isoformat()
         
         url = f"{HA_URL}/api/history/period/{start_iso}?filter_entity_id={entity_id}&end_time={end_iso}"
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = requests.get(url, headers=headers, timeout=60)
         if resp.status_code != 200:
             return jsonify({"error": f"HA API returned {resp.status_code}"}), 500
         
@@ -740,7 +740,7 @@ def api_history():
         
         logger.info(f"api_history: URL: {url}")
         
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=60)
         
         if response.status_code != 200:
             logger.error(f"api_history: HA API error {response.status_code}")
