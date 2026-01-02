@@ -1158,24 +1158,13 @@
                         {
                             label: 'Asetusarvo',
                             data: setpointPoints,
-                            borderColor: 'rgba(255, 193, 7, 0.35)',
-                            backgroundColor: 'rgba(255, 193, 7, 0.12)',
+                            borderColor: 'rgba(255, 193, 7, 0.8)',
+                            backgroundColor: 'rgba(255, 193, 7, 0.15)',
                             yAxisID: 'y',
                             stepped: true,
                             pointRadius: 0,
-                            borderWidth: 1,
-                            fill: true,
-                            segment: {
-                                backgroundColor: (context) => {
-                                    const p0 = context.p0;
-                                    if (!p0) return 'rgba(255, 193, 7, 0.12)';
-                                    
-                                    const timestamp = new Date(p0.x);
-                                    return isRoomHeaterOnAt(timestamp) 
-                                        ? 'rgba(220, 53, 69, 0.4)'  // Stronger red when heater is on
-                                        : 'rgba(255, 193, 7, 0.12)'; // Yellow when heater is off
-                                }
-                            }
+                            borderWidth: 2,
+                            fill: false
                         },
                         {
                             label: 'Lämpötila',
