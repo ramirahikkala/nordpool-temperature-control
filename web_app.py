@@ -122,6 +122,7 @@ CORS(app)  # Enable CORS for API endpoints
 
 # Initialize caching with 15-minute timeout for history data
 # 15 minutes aligns with the control cycle frequency
+# Using 'simple' in-memory cache (adequate with single gunicorn worker)
 cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 900})
 
 # Track if cache warmer has been started (to prevent multiple instances)
