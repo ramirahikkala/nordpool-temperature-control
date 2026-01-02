@@ -221,7 +221,7 @@ def api_switches_state():
 
 
 @app.route('/api/prices')
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(timeout=900, query_string=True)
 def api_prices():
     """Get electricity prices: today, yesterday, tomorrow.
     
@@ -248,7 +248,7 @@ def api_prices():
 
 
 @app.route('/api/central-heating-decision')
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(timeout=900, query_string=True)
 def api_central_heating_decision():
     """Get central heating run/block decision logic.
     
@@ -474,7 +474,7 @@ def api_switch_history_debug():
 
 
 @app.route('/api/switch-history')
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(timeout=900, query_string=True)
 def api_switch_history():
     """Get switch ON/OFF state for each quarter-hour (0-95) for a given period and entity.
     
@@ -677,7 +677,7 @@ def api_trigger():
 
 
 @app.route('/api/history')
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(timeout=900, query_string=True)
 def api_history():
     """Get historical data from Home Assistant (cached for 5 minutes).
     
@@ -789,7 +789,7 @@ def api_history():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/heating-decisions')
-@cache.cached(timeout=300, query_string=True)
+@cache.cached(timeout=900, query_string=True)
 def api_heating_decisions():
     """Get heating decisions log (cached for 5 minutes).
     
