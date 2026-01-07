@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -173,6 +174,35 @@
             text-align: right;
             margin-top: 10px;
         }
+        
+        .daylight-bar {
+            width: 100%;
+            height: 30px;
+            background: linear-gradient(to right, #1a1a2e, #f39c12, #1a1a2e);
+            border-radius: 5px;
+            position: relative;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        
+        .daylight-fill {
+            height: 100%;
+            background: linear-gradient(to right, rgba(243, 156, 18, 0.3), rgba(243, 156, 18, 0.6), rgba(243, 156, 18, 0.3));
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+        
+        .daylight-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -216,6 +246,35 @@
                         <div class="metric-value">
                             <span id="temp-adjustment">--</span><span class="metric-unit">°C</span>
                         </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>☀️ Päivän pituus</h2>
+                    <div class="metric">
+                        <div class="metric-label">Auringon nousu</div>
+                        <div class="metric-value">
+                            <span id="sunrise-time">--</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Auringon lasku</div>
+                        <div class="metric-value">
+                            <span id="sunset-time">--</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Päivän pituus</div>
+                        <div class="metric-value" style="font-size: 24px;">
+                            <span id="daylight-hours">--</span><span class="metric-unit">h</span> <span id="daylight-minutes">--</span><span class="metric-unit">min</span>
+                        </div>
+                    </div>
+                    <div class="daylight-bar">
+                        <div class="daylight-fill" id="daylight-fill" style="width: 50%;"></div>
+                        <div class="daylight-label" id="daylight-percent">--</div>
+                    </div>
+                    <div class="metric secondary" style="font-size: 13px; text-align: center;">
+                        <div id="daylight-comparison">--</div>
                     </div>
                 </div>
                 
@@ -324,6 +383,69 @@
         let outdoorTempChart = null;
         let currentStatus = null;
         
+        // Sun calculations for latitude/longitude (Kainuu, Finland: 64.77°N, 25.51°E)
+        const LATITUDE = 64.771894;
+        const LONGITUDE = 25.509340;
+        const MIN_DAYLIGHT_HOURS = 3 + 27/60;  // ~3h 27min (winter solstice at 64.77°N)
+        const MAX_DAYLIGHT_HOURS = 21 + 28/60; // ~21h 28min (summer solstice at 64.77°N)
+        
+        function updateSunInfo() {
+            try {
+                const today = new Date();
+                const times = SunCalc.getTimes(today, LATITUDE, LONGITUDE);
+                
+                // Format times
+                const formatTime = (date) => {
+                    return date.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+                };
+                
+                const sunrise = times.sunrise;
+                const sunset = times.sunset;
+                
+                // Calculate daylight duration in hours
+                const daylightMs = sunset - sunrise;
+                const daylightHours = Math.floor(daylightMs / (1000 * 60 * 60));
+                const daylightMinutes = Math.floor((daylightMs % (1000 * 60 * 60)) / (1000 * 60));
+                
+                // Calculate percentage compared to max daylight
+                const totalDaylightHours = daylightHours + daylightMinutes / 60;
+                const daylightPercent = Math.round((totalDaylightHours / MAX_DAYLIGHT_HOURS) * 100);
+                
+                // Calculate difference from shortest and longest day
+                const diffFromMin = totalDaylightHours - MIN_DAYLIGHT_HOURS;
+                const diffFromMax = MAX_DAYLIGHT_HOURS - totalDaylightHours;
+                
+                // Update UI
+                document.getElementById('sunrise-time').textContent = formatTime(sunrise);
+                document.getElementById('sunset-time').textContent = formatTime(sunset);
+                document.getElementById('daylight-hours').textContent = daylightHours;
+                document.getElementById('daylight-minutes').textContent = daylightMinutes;
+                
+                // Update visualization
+                document.getElementById('daylight-fill').style.width = daylightPercent + '%';
+                document.getElementById('daylight-percent').textContent = daylightPercent + '%';
+                
+                // Update comparison text
+                let comparisonText = '';
+                if (diffFromMin > 0.1) {
+                    const diffHours = Math.floor(diffFromMin);
+                    const diffMins = Math.round((diffFromMin - diffHours) * 60);
+                    comparisonText = `+${diffHours}h ${diffMins}min pitempi kuin pimein päivä`;
+                } else if (diffFromMax > 0.1) {
+                    const diffHours = Math.floor(diffFromMax);
+                    const diffMins = Math.round((diffFromMax - diffHours) * 60);
+                    comparisonText = `${diffHours}h ${diffMins}min lyhyempi kuin pisin päivä`;
+                } else {
+                    comparisonText = 'Tasapainopäivä';
+                }
+                document.getElementById('daylight-comparison').textContent = comparisonText;
+            } catch (error) {
+                console.error('Error calculating sun info:', error);
+                document.getElementById('sunrise-time').textContent = '--';
+                document.getElementById('sunset-time').textContent = '--';
+            }
+        }
+        
         async function loadData() {
             try {
                 document.getElementById('loading').style.display = 'block';
@@ -418,6 +540,9 @@
                 if (data.price.daily_prices) {
                     updatePriceChart(data.price.daily_prices, data.price.current);
                 }
+                
+                // Update sun info
+                updateSunInfo();
                 
                 // Update tomorrow price chart - destroy if no data
                 if (data.price.tomorrow_prices && data.price.tomorrow_prices.length > 0) {
