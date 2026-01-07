@@ -236,6 +236,18 @@
                             Kallein: <span id="price-max-time">--</span> | Halvin: <span id="price-min-time">--</span>
                         </div>
                     </div>
+                    <div class="metric secondary">
+                        <div class="metric-label">Keskiarvo (kaikki 24h)</div>
+                        <div class="metric-value" style="font-size: 20px;">
+                            <span id="price-avg-all">--</span><span class="metric-unit">c/kWh</span>
+                        </div>
+                    </div>
+                    <div class="metric secondary">
+                        <div class="metric-label">Keskiarvo (ilman 6 kalleinta tuntia)</div>
+                        <div class="metric-value" style="font-size: 20px;">
+                            <span id="price-avg-without-top6">--</span><span class="metric-unit">c/kWh</span>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="card">
@@ -354,6 +366,24 @@
                 } else {
                     document.getElementById('price-max-time').textContent = '--';
                     document.getElementById('price-min-time').textContent = '--';
+                }
+                
+                // Calculate average prices
+                if (data.price.daily_prices && data.price.daily_prices.length > 0) {
+                    // Average of all prices
+                    const avgAll = data.price.daily_prices.reduce((a, b) => a + b, 0) / data.price.daily_prices.length;
+                    document.getElementById('price-avg-all').textContent = avgAll.toFixed(2);
+                    
+                    // Average without top 6 hours (6 * 4 quarters = 24 indices)
+                    const prices = [...data.price.daily_prices].sort((a, b) => a - b);
+                    const pricesWithoutTop6 = prices.slice(0, prices.length - 24);
+                    const avgWithoutTop6 = pricesWithoutTop6.length > 0 
+                        ? pricesWithoutTop6.reduce((a, b) => a + b, 0) / pricesWithoutTop6.length
+                        : avgAll;
+                    document.getElementById('price-avg-without-top6').textContent = avgWithoutTop6.toFixed(2);
+                } else {
+                    document.getElementById('price-avg-all').textContent = '--';
+                    document.getElementById('price-avg-without-top6').textContent = '--';
                 }
                 
                 // Update room heater status
