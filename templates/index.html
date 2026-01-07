@@ -258,9 +258,21 @@
                         </div>
                     </div>
                     <div class="metric">
+                        <div class="metric-label">Aamuhämärä (ulkoilu alkaa)</div>
+                        <div class="metric-value" style="font-size: 18px; color: #ff9800;">
+                            <span id="dawn-time">--</span>
+                        </div>
+                    </div>
+                    <div class="metric">
                         <div class="metric-label">Auringon lasku</div>
                         <div class="metric-value">
                             <span id="sunset-time">--</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Ilta-hämärä (ulkoilu loppuu)</div>
+                        <div class="metric-value" style="font-size: 18px; color: #ff9800;">
+                            <span id="dusk-time">--</span>
                         </div>
                     </div>
                     <div class="metric">
@@ -401,6 +413,8 @@
                 
                 const sunrise = times.sunrise;
                 const sunset = times.sunset;
+                const dawn = times.dawn;      // Civil twilight begins (morning)
+                const dusk = times.dusk;      // Civil twilight ends (evening)
                 
                 // Calculate daylight duration in hours
                 const daylightMs = sunset - sunrise;
@@ -416,8 +430,10 @@
                 const diffFromMax = MAX_DAYLIGHT_HOURS - totalDaylightHours;
                 
                 // Update UI
+                document.getElementById('dawn-time').textContent = formatTime(dawn);
                 document.getElementById('sunrise-time').textContent = formatTime(sunrise);
                 document.getElementById('sunset-time').textContent = formatTime(sunset);
+                document.getElementById('dusk-time').textContent = formatTime(dusk);
                 document.getElementById('daylight-hours').textContent = daylightHours;
                 document.getElementById('daylight-minutes').textContent = daylightMinutes;
                 
@@ -441,8 +457,10 @@
                 document.getElementById('daylight-comparison').textContent = comparisonText;
             } catch (error) {
                 console.error('Error calculating sun info:', error);
+                document.getElementById('dawn-time').textContent = '--';
                 document.getElementById('sunrise-time').textContent = '--';
                 document.getElementById('sunset-time').textContent = '--';
+                document.getElementById('dusk-time').textContent = '--';
             }
         }
         
