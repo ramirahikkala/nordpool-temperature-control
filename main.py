@@ -350,17 +350,42 @@ def fetch_and_store_spot_prices():
     
     Creates sensor: sensor.spot_hinta_prices
     """
+    def _fetch_with_retry():
+        for attempt in range(3):
+            try:
+                logger.info(f"Fetching spot prices from Spot-Hinta API (attempt {attempt + 1}/3)...")
+                response = requests.get(SPOT_HINTA_API_URL, timeout=10)
+                
+                if response.status_code != 200:
+                    logger.warning(f"Spot Hinta API error: {response.status_code}")
+                    if attempt < 2:
+                        time.sleep(5)
+                        continue
+                    return None
+                
+                data = response.json()
+                if not data or len(data) == 0:
+                    logger.warning("Spot Hinta API returned empty data")
+                    if attempt < 2:
+                        time.sleep(5)
+                        continue
+                    return None
+                
+                return data
+                
+            except Exception as e:
+                logger.warning(f"Error fetching from API (attempt {attempt + 1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(5)
+                    continue
+                return None
+        
+        return None
+    
     try:
-        logger.info("Fetching spot prices from Spot-Hinta API...")
-        response = requests.get(SPOT_HINTA_API_URL, timeout=10)
-        
-        if response.status_code != 200:
-            logger.error(f"Spot Hinta API error: {response.status_code}")
-            return False
-        
-        data = response.json()
-        if not data or len(data) == 0:
-            logger.error("Spot Hinta API returned empty data")
+        data = _fetch_with_retry()
+        if not data:
+            logger.error("Failed to fetch spot prices after 3 attempts")
             return False
         
         # Get today's date in local timezone
@@ -730,12 +755,28 @@ if __name__ == "__main__":
         replace_existing=True
     )
     
-    # Schedule to fetch spot prices at :05, :20, :35, :50 every hour (5 min after price updates)
+    # Schedule to fetch spot prices daily at 14:20, 15:00, and 16:00
+    # Spot-Hinta API updates once daily around 14:00-15:00 with next day prices
+    # Three attempts ensure we catch the update even if timing varies
     scheduler.add_job(
         fetch_and_store_spot_prices,
-        trigger=CronTrigger(minute='5,20,35,50', timezone=tz),
-        id='fetch_spot_prices',
-        name='Fetch Spot Prices',
+        trigger=CronTrigger(hour='14', minute='20', timezone=tz),
+        id='fetch_spot_prices_1',
+        name='Fetch Spot Prices (14:20)',
+        replace_existing=True
+    )
+    scheduler.add_job(
+        fetch_and_store_spot_prices,
+        trigger=CronTrigger(hour='15', minute='0', timezone=tz),
+        id='fetch_spot_prices_2',
+        name='Fetch Spot Prices (15:00)',
+        replace_existing=True
+    )
+    scheduler.add_job(
+        fetch_and_store_spot_prices,
+        trigger=CronTrigger(hour='16', minute='0', timezone=tz),
+        id='fetch_spot_prices_3',
+        name='Fetch Spot Prices (16:00)',
         replace_existing=True
     )
     
