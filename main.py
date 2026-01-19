@@ -31,7 +31,9 @@ if not API_TOKEN:
 # Price-based temperature control configuration
 BASE_TEMPERATURE_FALLBACK = float(os.getenv("BASE_TEMPERATURE", "21.0"))
 BASE_TEMPERATURE_INPUT = os.getenv("BASE_TEMPERATURE_INPUT")  # Optional input_number entity
-PRICE_SENSOR = os.getenv("PRICE_SENSOR", "sensor.nordpool_kwh_fi_eur_3_10_0255")
+PRICE_SENSOR = os.getenv("PRICE_SENSOR", "sensor.nordpool_kwh_fi_eur_3_10_0255")  # DEPRECATED
+SPOT_HINTA_SENSOR = os.getenv("SPOT_HINTA_SENSOR", "sensor.spot_hinta_prices")  # Spot-Hinta sensor
+SPOT_HINTA_API_URL = os.getenv("SPOT_HINTA_API_URL", "https://api.spot-hinta.fi/TodayAndDayForward")  # Spot-Hinta API
 SWITCH_ENTITY = os.getenv("SWITCH_ENTITY", "switch.shelly1minig3_5432044efb74")
 TEMPERATURE_SENSOR = os.getenv("TEMPERATURE_SENSOR")  # Current temperature sensor
 SETPOINT_OUTPUT = os.getenv("SETPOINT_OUTPUT")  # Optional output to write setpoint
@@ -139,34 +141,41 @@ def get_price_from_day_array(prices_array):
 
 
 def get_current_price():
-    """Get current electricity price from the price sensor.
+    """Get current electricity price from Spot-Hinta sensor stored in HA.
     
-    Fetches from the Nordpool sensor's 'today' array (96 quarter-hour prices)
-    to get the actual price for the current quarter, avoiding caching issues.
+    Reads from sensor.spot_hinta_prices which is populated by fetch_and_store_spot_prices().
+    The sensor's state contains the current quarter-hour price.
+    
+    Returns:
+        float: Current price in c/kWh, or None on error
     """
     def _fetch():
         try:
             response = requests.get(
-                f"{HA_URL}/api/states/{PRICE_SENSOR}",
+                f"{HA_URL}/api/states/{SPOT_HINTA_SENSOR}",
                 headers=headers,
                 timeout=5
             )
             if response.status_code == 200:
                 data = response.json()
+                
+                # Get today's prices from attributes for accurate quarter-hour price
                 attributes = data.get('attributes', {})
                 today_prices = attributes.get('today', [])
                 
-                if len(today_prices) == 96:
+                if len(today_prices) >= 96:
                     # Use the day array for accurate quarter-hour price
                     price_cents = get_price_from_day_array(today_prices)
                     return price_cents
                 else:
-                    logger.warning(f"Unexpected 'today' array length: {len(today_prices)}")
-                    # Fallback: use state value directly (already in c/kWh)
-                    state_price = float(data['state'])
-                    return state_price
+                    # Fallback to state value
+                    state = data.get('state')
+                    if state and state not in ('unknown', 'unavailable'):
+                        return float(state)
+                    logger.warning(f"No valid price data in sensor")
+                    return None
             else:
-                logger.error(f"Error getting price: Status {response.status_code}")
+                logger.error(f"Error getting price from HA: Status {response.status_code}")
                 return None
         except Exception as e:
             logger.error(f"Error fetching price: {e}")
@@ -329,26 +338,124 @@ def ping_healthcheck(success=True):
         logger.warning(f"Failed to ping healthcheck: {e}")
 
 
+def fetch_and_store_spot_prices():
+    """Fetch electricity prices from Spot-Hinta API and store in Home Assistant.
+    
+    Fetches today's and tomorrow's prices from https://api.spot-hinta.fi/
+    and stores them as a sensor in HA (Nordpool-style):
+    - state: current quarter-hour price (c/kWh)
+    - attributes.today: list of 96 prices for today
+    - attributes.tomorrow: list of 96 prices for tomorrow (when available)
+    - attributes.tomorrow_valid: boolean indicating if tomorrow's prices are available
+    
+    Creates sensor: sensor.spot_hinta_prices
+    """
+    try:
+        logger.info("Fetching spot prices from Spot-Hinta API...")
+        response = requests.get(SPOT_HINTA_API_URL, timeout=10)
+        
+        if response.status_code != 200:
+            logger.error(f"Spot Hinta API error: {response.status_code}")
+            return False
+        
+        data = response.json()
+        if not data or len(data) == 0:
+            logger.error("Spot Hinta API returned empty data")
+            return False
+        
+        # Get today's date in local timezone
+        tz = ZoneInfo("Europe/Helsinki")
+        now = datetime.now(tz)
+        today = now.date()
+        tomorrow = datetime.fromordinal(today.toordinal() + 1)
+        
+        # Separate today's and tomorrow's prices from API response
+        today_prices = []
+        tomorrow_prices = []
+        
+        for price_point in data:
+            dt = datetime.fromisoformat(price_point['DateTime'])
+            price_eur = price_point['PriceNoTax']  # Use price without tax
+            price_cents = round(price_eur * 100, 4)  # Convert EUR/kWh to c/kWh
+            
+            if dt.date() == today:
+                today_prices.append(price_cents)
+            elif dt.date() == tomorrow.date():
+                tomorrow_prices.append(price_cents)
+        
+        if not today_prices:
+            logger.error("No prices found for today in API response")
+            return False
+        
+        # Calculate current price from today's array
+        quarter = (now.hour * 4) + (now.minute // 15)
+        if 0 <= quarter < len(today_prices):
+            current_price = today_prices[quarter]
+        else:
+            current_price = today_prices[0] if today_prices else 0
+        
+        # Determine if tomorrow's prices are valid
+        tomorrow_valid = len(tomorrow_prices) >= 96
+        
+        # Build sensor payload (Nordpool-style)
+        payload = {
+            "state": round(current_price, 2),
+            "attributes": {
+                "unit_of_measurement": "c/kWh",
+                "friendly_name": "Spot Hinta Electricity Price",
+                "icon": "mdi:flash",
+                "today": today_prices,
+                "tomorrow": tomorrow_prices if tomorrow_valid else [],
+                "tomorrow_valid": tomorrow_valid,
+                "last_update": now.isoformat(),
+                "source": "spot-hinta.fi"
+            }
+        }
+        
+        # Store in Home Assistant
+        response = requests.post(
+            f"{HA_URL}/api/states/{SPOT_HINTA_SENSOR}",
+            headers=headers,
+            json=payload,
+            timeout=5
+        )
+        
+        if 200 <= response.status_code < 300:
+            logger.info(f"Stored spot prices in HA: {len(today_prices)} today, {len(tomorrow_prices)} tomorrow, current={current_price:.2f} c/kWh")
+            return True
+        else:
+            logger.error(f"Failed to store prices in HA: {response.status_code}")
+            return False
+    
+    except Exception as e:
+        logger.error(f"Error fetching/storing spot prices: {e}")
+        return False
+
+
 def get_daily_prices():
-    """Get all quarter-hourly prices for today from the Nordpool sensor.
+    """Get all quarter-hourly prices for today from Spot-Hinta sensor stored in HA.
+    
+    Reads from sensor.spot_hinta_prices attributes.today which is populated by fetch_and_store_spot_prices()
     
     Returns:
         list: List of prices (96 values for 24 hours at 15-minute resolution), or None on error
     """
     try:
         response = requests.get(
-            f"{HA_URL}/api/states/{PRICE_SENSOR}",
+            f"{HA_URL}/api/states/{SPOT_HINTA_SENSOR}",
             headers=headers,
             timeout=5
         )
         if response.status_code == 200:
             data = response.json()
-            prices = data.get('attributes', {}).get('today', [])
-            if len(prices) == 96:  # 24 hours * 4 quarters
-                return prices
+            attributes = data.get('attributes', {})
+            today_prices = attributes.get('today', [])
+            
+            if len(today_prices) >= 96:  # 24 hours * 4 quarters
+                return today_prices
             else:
-                logger.warning(f"Unexpected number of prices: {len(prices)} (expected 96)")
-                return prices if prices else None
+                logger.warning(f"Unexpected number of prices: {len(today_prices)} (expected 96)")
+                return today_prices if today_prices else None
         else:
             logger.error(f"Error getting daily prices: Status {response.status_code}")
             return None
@@ -620,6 +727,15 @@ if __name__ == "__main__":
         trigger=CronTrigger(minute='0,15,30,45', timezone=tz),
         id='temperature_control',
         name='Temperature Control',
+        replace_existing=True
+    )
+    
+    # Schedule to fetch spot prices at :05, :20, :35, :50 every hour (5 min after price updates)
+    scheduler.add_job(
+        fetch_and_store_spot_prices,
+        trigger=CronTrigger(minute='5,20,35,50', timezone=tz),
+        id='fetch_spot_prices',
+        name='Fetch Spot Prices',
         replace_existing=True
     )
     

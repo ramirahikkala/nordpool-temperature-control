@@ -23,6 +23,7 @@ from main import (
     HA_URL,
     headers,
     PRICE_SENSOR,
+    SPOT_HINTA_SENSOR,
     SWITCH_ENTITY,
     TEMPERATURE_SENSOR,
     CENTRAL_HEATING_SHUTOFF_SWITCH,
@@ -46,52 +47,72 @@ OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "")
 
 
 def get_yesterday_prices():
-    """Get yesterday's prices from Nordpool sensor via history API.
+    """Get yesterday's prices from HA history API.
     
-    The Nordpool sensor's raw_today attribute is already indexed by local time,
-    just like the 'today' and 'tomorrow' attributes.
+    Since we store prices in sensor.spot_hinta_prices, we can use HA's
+    history API to fetch yesterday's state values.
+    
+    Returns:
+        list: 96 prices for yesterday, or None if not available
     """
     try:
-        from datetime import timedelta
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
         
-        # Get yesterday at noon (to ensure we're in the middle of the day)
-        yesterday_noon = (datetime.now() - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+        tz = ZoneInfo("Europe/Helsinki")
+        now = datetime.now(tz)
         
-        # Query history API for a single state from yesterday
-        # The raw_today attribute from yesterday contains yesterday's full 96 prices
-        url = f"{HA_URL}/api/history/period/{yesterday_noon.isoformat()}?filter_entity_id={PRICE_SENSOR}&end_time={yesterday_noon.replace(minute=1).isoformat()}"
-        response = requests.get(url, headers=headers, timeout=10)
+        # Calculate yesterday's timestamps (midnight to midnight)
+        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        if response.status_code == 200:
-            history_data = response.json()
-            if history_data and len(history_data) > 0 and len(history_data[0]) > 0:
-                # Get the first state entry
-                state = history_data[0][0]
-                raw_today = state.get('attributes', {}).get('raw_today', [])
-                
-                if raw_today and len(raw_today) == 96:
-                    # Extract just the values from the raw_today array
-                    # Data is already in local time format, no rotation needed
-                    prices = [entry['value'] for entry in raw_today]
-                    return prices
+        # Query HA history API for yesterday's prices
+        history_url = f"{HA_URL}/api/history/period/{yesterday_start.isoformat()}"
+        params = {
+            "filter_entity_id": SPOT_HINTA_SENSOR,
+            "end_time": yesterday_end.isoformat(),
+            "minimal_response": "false"  # We need attributes
+        }
         
+        response = requests.get(history_url, headers=headers, params=params, timeout=10)
+        if response.status_code != 200:
+            print(f"History API error: {response.status_code}")
+            return None
+        
+        data = response.json()
+        if not data or len(data) == 0 or len(data[0]) == 0:
+            print("No history data found for yesterday")
+            return None
+        
+        # Find a history entry that has 'today' attribute with 96 prices
+        # (yesterday's "today" is what we want)
+        for entry in data[0]:
+            attributes = entry.get('attributes', {})
+            today_prices = attributes.get('today', [])
+            if len(today_prices) >= 96:
+                return today_prices
+        
+        print("No complete price data found in history")
         return None
     except Exception as e:
-        print(f"Error fetching yesterday prices: {e}")
+        print(f"Error fetching yesterday prices from history: {e}")
         return None
 
 
 def get_tomorrow_prices():
-    """Get tomorrow's prices from Nordpool sensor if available."""
+    """Get tomorrow's prices from Spot-Hinta sensor stored in HA if available."""
     try:
-        response = requests.get(f"{HA_URL}/api/states/{PRICE_SENSOR}", headers=headers, timeout=5)
+        response = requests.get(f"{HA_URL}/api/states/{SPOT_HINTA_SENSOR}", headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            tomorrow_valid = data.get('attributes', {}).get('tomorrow_valid', False)
-            if tomorrow_valid:
-                tomorrow = data.get('attributes', {}).get('tomorrow', [])
-                if tomorrow and len(tomorrow) == 96:
-                    return tomorrow
+            attributes = data.get('attributes', {})
+            
+            # Check if tomorrow's prices are valid
+            tomorrow_valid = attributes.get('tomorrow_valid', False)
+            tomorrow_prices = attributes.get('tomorrow', [])
+            
+            if tomorrow_valid and len(tomorrow_prices) >= 96:
+                return tomorrow_prices
         return None
     except Exception as e:
         print(f"Error fetching tomorrow prices: {e}")
