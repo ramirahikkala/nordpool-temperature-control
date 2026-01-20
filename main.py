@@ -782,6 +782,14 @@ if __name__ == "__main__":
     
     logger.info("Scheduler initialized. Will run at :00, :15, :30, :45 every hour.")
     logger.info(f"Timezone: {tz}")
+    logger.info("Fetching spot prices at startup...")
+    
+    # Fetch spot prices at startup
+    try:
+        fetch_and_store_spot_prices()
+    except Exception as e:
+        logger.error(f"Error fetching spot prices at startup: {e}", exc_info=True)
+    
     logger.info("Running initial control cycle now...")
     
     # Run once immediately at startup

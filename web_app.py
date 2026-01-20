@@ -674,7 +674,7 @@ def api_config():
             "OUTDOOR_TEMP_SENSOR": OUTDOOR_TEMP_SENSOR,
             "SWITCH_ENTITY": SWITCH_ENTITY,
             "CENTRAL_HEATING_SHUTOFF_SWITCH": CENTRAL_HEATING_SHUTOFF_SWITCH,
-            "PRICE_SENSOR": PRICE_SENSOR
+            "SPOT_HINTA_SENSOR": SPOT_HINTA_SENSOR
         })
     
     elif request.method == 'POST':
@@ -737,8 +737,8 @@ def api_history():
             entities.append(SWITCH_ENTITY)
         if CENTRAL_HEATING_SHUTOFF_SWITCH:
             entities.append(CENTRAL_HEATING_SHUTOFF_SWITCH)
-        if PRICE_SENSOR:
-            entities.append(PRICE_SENSOR)
+        if SPOT_HINTA_SENSOR:
+            entities.append(SPOT_HINTA_SENSOR)
         # Include calculated setpoint output entity if configured
         if SETPOINT_OUTPUT:
             if SETPOINT_OUTPUT not in entities:
