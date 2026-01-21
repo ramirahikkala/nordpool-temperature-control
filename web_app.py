@@ -22,8 +22,6 @@ from main import (
     should_central_heating_run,
     HA_URL,
     headers,
-    PRICE_SENSOR,
-    SPOT_HINTA_SENSOR,
     SWITCH_ENTITY,
     TEMPERATURE_SENSOR,
     CENTRAL_HEATING_SHUTOFF_SWITCH,
@@ -47,71 +45,43 @@ OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "")
 
 
 def get_yesterday_prices():
-    """Get yesterday's prices from HA history API.
+    """Get yesterday's prices from Spot-Hinta API (if available).
     
-    Since we store prices in sensor.spot_hinta_prices, we can use HA's
-    history API to fetch yesterday's state values.
+    Note: Spot-Hinta /TodayAndDayForward typically only returns today and tomorrow.
+    Yesterday's data is not available from this endpoint.
     
     Returns:
-        list: 96 prices for yesterday, or None if not available
+        None: Yesterday prices not available from API
     """
-    try:
-        from datetime import datetime, timedelta
-        from zoneinfo import ZoneInfo
-        
-        tz = ZoneInfo("Europe/Helsinki")
-        now = datetime.now(tz)
-        
-        # Calculate yesterday's timestamps (midnight to midnight)
-        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        yesterday_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        # Query HA history API for yesterday's prices
-        history_url = f"{HA_URL}/api/history/period/{yesterday_start.isoformat()}"
-        params = {
-            "filter_entity_id": SPOT_HINTA_SENSOR,
-            "end_time": yesterday_end.isoformat(),
-            "minimal_response": "false"  # We need attributes
-        }
-        
-        response = requests.get(history_url, headers=headers, params=params, timeout=10)
-        if response.status_code != 200:
-            print(f"History API error: {response.status_code}")
-            return None
-        
-        data = response.json()
-        if not data or len(data) == 0 or len(data[0]) == 0:
-            print("No history data found for yesterday")
-            return None
-        
-        # Find a history entry that has 'today' attribute with 96 prices
-        # (yesterday's "today" is what we want)
-        for entry in data[0]:
-            attributes = entry.get('attributes', {})
-            today_prices = attributes.get('today', [])
-            if len(today_prices) >= 96:
-                return today_prices
-        
-        print("No complete price data found in history")
-        return None
-    except Exception as e:
-        print(f"Error fetching yesterday prices from history: {e}")
-        return None
+    # Spot-Hinta API doesn't provide historical data beyond today
+    return None
 
 
 def get_tomorrow_prices():
-    """Get tomorrow's prices from Spot-Hinta sensor stored in HA if available."""
+    """Get tomorrow's prices from Spot-Hinta API if available."""
     try:
-        response = requests.get(f"{HA_URL}/api/states/{SPOT_HINTA_SENSOR}", headers=headers, timeout=5)
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from main import SPOT_HINTA_API_URL
+        
+        response = requests.get(SPOT_HINTA_API_URL, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            attributes = data.get('attributes', {})
             
-            # Check if tomorrow's prices are valid
-            tomorrow_valid = attributes.get('tomorrow_valid', False)
-            tomorrow_prices = attributes.get('tomorrow', [])
+            tz = ZoneInfo("Europe/Helsinki")
+            tomorrow = (datetime.now(tz).date().toordinal() + 1)
+            tomorrow_date = datetime.fromordinal(tomorrow).date()
             
-            if tomorrow_valid and len(tomorrow_prices) >= 96:
+            # Extract tomorrow's prices
+            tomorrow_prices = []
+            for price_point in data:
+                dt = datetime.fromisoformat(price_point['DateTime'])
+                if dt.date() == tomorrow_date:
+                    price_eur = price_point['PriceNoTax']
+                    price_cents = price_eur * 100
+                    tomorrow_prices.append(price_cents)
+            
+            if len(tomorrow_prices) >= 96:
                 return tomorrow_prices
         return None
     except Exception as e:
@@ -673,8 +643,7 @@ def api_config():
             "TEMPERATURE_SENSOR": TEMPERATURE_SENSOR,
             "OUTDOOR_TEMP_SENSOR": OUTDOOR_TEMP_SENSOR,
             "SWITCH_ENTITY": SWITCH_ENTITY,
-            "CENTRAL_HEATING_SHUTOFF_SWITCH": CENTRAL_HEATING_SHUTOFF_SWITCH,
-            "SPOT_HINTA_SENSOR": SPOT_HINTA_SENSOR
+            "CENTRAL_HEATING_SHUTOFF_SWITCH": CENTRAL_HEATING_SHUTOFF_SWITCH
         })
     
     elif request.method == 'POST':
@@ -737,8 +706,7 @@ def api_history():
             entities.append(SWITCH_ENTITY)
         if CENTRAL_HEATING_SHUTOFF_SWITCH:
             entities.append(CENTRAL_HEATING_SHUTOFF_SWITCH)
-        if SPOT_HINTA_SENSOR:
-            entities.append(SPOT_HINTA_SENSOR)
+        # Note: Price data now fetched directly from Spot-Hinta API, not from HA
         # Include calculated setpoint output entity if configured
         if SETPOINT_OUTPUT:
             if SETPOINT_OUTPUT not in entities:
