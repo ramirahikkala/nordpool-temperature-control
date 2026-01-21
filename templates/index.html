@@ -1460,41 +1460,68 @@
             
             // Get central heating blocked periods for annotations
             const centralHeatingEntity = historyData.central_heating_entity;
-            const blockedAnnotations = [];
+            const blockedAnnotations = {};
+            let annotationIndex = 0;
             
             if (centralHeatingEntity && entities[centralHeatingEntity]) {
                 const centralHeatingData = entities[centralHeatingEntity];
-                let lastTimestamp = null;
-                let lastState = null;
+                const now = new Date();
+                const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
                 
-                centralHeatingData.forEach(point => {
-                    const timestamp = new Date(point.timestamp);
+                // Filter to last 24h and sort by timestamp
+                const relevantData = centralHeatingData
+                    .filter(p => new Date(p.timestamp) >= startTime)
+                    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                
+                // Find state at start of period (look at data before the period)
+                let stateAtStart = 'off';
+                for (const point of centralHeatingData) {
+                    const time = new Date(point.timestamp);
+                    if (time <= startTime) {
+                        stateAtStart = point.value;
+                    }
+                }
+                
+                let blockStart = null;
+                
+                // If heating was blocked at the start of the period, mark the start
+                if (stateAtStart === 'on') {
+                    blockStart = startTime;
+                }
+                
+                for (const point of relevantData) {
+                    const time = new Date(point.timestamp);
                     const state = point.value;
                     
-                    if (lastState === 'on' && lastTimestamp) {
-                        // Central heating was blocked (switch ON = blocked)
-                        blockedAnnotations.push({
-                            type: 'line',
-                            xMin: lastTimestamp,
-                            xMax: lastTimestamp,
-                            borderColor: 'rgba(220, 53, 69, 0.7)',
-                            borderWidth: 2,
-                            label: {
-                                content: 'Keskuslämmitys pois',
-                                enabled: true,
-                                position: 'start',
-                                backgroundColor: 'rgba(220, 53, 69, 0.8)',
-                                color: 'white',
-                                font: {
-                                    size: 10
-                                }
-                            }
-                        });
+                    if (state === 'on' && blockStart === null) {
+                        // Heating blocked period starts
+                        blockStart = time;
+                    } else if (state === 'off' && blockStart !== null) {
+                        // Heating blocked period ends
+                        blockedAnnotations[`block${annotationIndex}`] = {
+                            type: 'box',
+                            xMin: blockStart,
+                            xMax: time,
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderColor: 'rgba(220, 53, 69, 0.3)',
+                            borderWidth: 1
+                        };
+                        annotationIndex++;
+                        blockStart = null;
                     }
-                    
-                    lastTimestamp = timestamp;
-                    lastState = state;
-                });
+                }
+                
+                // If still in blocked state, extend to now
+                if (blockStart !== null) {
+                    blockedAnnotations[`block${annotationIndex}`] = {
+                        type: 'box',
+                        xMin: blockStart,
+                        xMax: now,
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        borderColor: 'rgba(220, 53, 69, 0.3)',
+                        borderWidth: 1
+                    };
+                }
             }
             
             if (rollingPriceChart) {
@@ -1528,7 +1555,21 @@
                     },
                     plugins: {
                         legend: {
-                            display: true
+                            display: true,
+                            labels: {
+                                generateLabels: function(chart) {
+                                    const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                    // Add custom legend item for central heating blocked periods
+                                    original.push({
+                                        text: 'Keskuslämmitys pois',
+                                        fillStyle: 'rgba(220, 53, 69, 0.3)',
+                                        strokeStyle: 'rgba(220, 53, 69, 0.3)',
+                                        lineWidth: 0,
+                                        hidden: false
+                                    });
+                                    return original;
+                                }
+                            }
                         },
                         tooltip: {
                             callbacks: {
