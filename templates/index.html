@@ -357,6 +357,13 @@
             </div>
             
             <div class="card">
+                <h2>💰 Sähkönhinta liukuva 24 h</h2>
+                <div class="chart-container">
+                    <canvas id="rollingPriceChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
                 <h2>❄️ Ulkolämpötila (24 h)</h2>
                 <div class="chart-container" style="height: 300px;">
                     <canvas id="outdoorTempChart"></canvas>
@@ -381,13 +388,6 @@
                 <h2>💰 Sähkönhinta eilen (24 h)</h2>
                 <div class="chart-container">
                     <canvas id="yesterdayPriceChart"></canvas>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>💰 Sähkönhinta liukuva 24 h</h2>
-                <div class="chart-container">
-                    <canvas id="rollingPriceChart"></canvas>
                 </div>
             </div>
         </div>
@@ -1443,10 +1443,11 @@
                             borderColor: '#28a745',
                             backgroundColor: 'rgba(40, 167, 69, 0.1)',
                             yAxisID: 'y',
-                            stepped: false,
-                            pointRadius: 1,
+                            stepped: true,
+                            pointRadius: 2,
                             borderWidth: 2,
-                            fill: true
+                            fill: true,
+                            spanGaps: false
                         }
                     ]
                 },
@@ -1476,11 +1477,17 @@
                                 unit: 'hour',
                                 displayFormats: {
                                     hour: 'HH:mm'
-                                }
+                                },
+                                tooltipFormat: 'dd.MM.yyyy HH:mm'
                             },
                             title: {
                                 display: true,
                                 text: 'Aika'
+                            },
+                            ticks: {
+                                maxTicksLimit: 24,
+                                maxRotation: 45,
+                                minRotation: 45
                             }
                         },
                         y: {
@@ -1490,7 +1497,12 @@
                                 display: true,
                                 text: 'Hinta (c/kWh)'
                             },
-                            beginAtZero: true
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            }
                         }
                     }
                 }
