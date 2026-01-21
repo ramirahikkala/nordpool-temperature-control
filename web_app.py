@@ -706,7 +706,13 @@ def api_history():
             entities.append(SWITCH_ENTITY)
         if CENTRAL_HEATING_SHUTOFF_SWITCH:
             entities.append(CENTRAL_HEATING_SHUTOFF_SWITCH)
-        # Note: Price data now fetched directly from Spot-Hinta API, not from HA
+        
+        # Add Nordpool sensor for historical 24h rolling price display
+        # This provides actual realized prices (what actually happened)
+        # while Spot-Hinta API provides today's planned prices
+        nordpool_sensor = "sensor.nord_pool_fi_current_price"
+        entities.append(nordpool_sensor)
+        
         # Include calculated setpoint output entity if configured
         if SETPOINT_OUTPUT:
             if SETPOINT_OUTPUT not in entities:
@@ -751,7 +757,8 @@ def api_history():
             "setpoint_entity": SETPOINT_OUTPUT,
             "base_temperature_entity": BASE_TEMPERATURE_INPUT,
             "room_heater_entity": SWITCH_ENTITY,
-            "central_heating_entity": CENTRAL_HEATING_SHUTOFF_SWITCH
+            "central_heating_entity": CENTRAL_HEATING_SHUTOFF_SWITCH,
+            "nordpool_price_entity": nordpool_sensor
         }
         
         # HA returns an array where each element is the history for one entity
