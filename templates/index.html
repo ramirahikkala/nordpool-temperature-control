@@ -1133,64 +1133,15 @@
                 return isOn;
             }
             
-            // Create room heater ON annotations (orange background when heater is on)
-            const roomHeaterAnnotations = {};
-            let rhAnnotationIndex = 0;
-            
-            // Helper function to round time to quarter boundaries
-            const roundToQuarterStart = (date) => {
-                const d = new Date(date);
-                d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0);
-                return d;
-            };
-            
-            if (roomHeaterData.length > 0) {
-                let heaterOnStart = null;
-                
-                // If heater was on at start of day, mark the start
-                if (roomHeaterStateAtDayStart === 'on') {
-                    // Find the earliest data point time or use start of day
-                    const earliestDataTime = tempPoints.length > 0 ? tempPoints[0].x : startOfDay;
-                    heaterOnStart = roundToQuarterStart(earliestDataTime);
-                }
-                
-                // Process state changes
-                for (const point of roomHeaterData) {
-                    const time = new Date(point.timestamp);
-                    const state = point.value;
-                    
-                    if (state === 'on' && heaterOnStart === null) {
-                        // Heater turned ON
-                        heaterOnStart = roundToQuarterStart(time);
-                    } else if (state === 'off' && heaterOnStart !== null) {
-                        // Heater turned OFF - create annotation
-                        roomHeaterAnnotations[`heater${rhAnnotationIndex}`] = {
-                            type: 'box',
-                            xMin: heaterOnStart,
-                            xMax: roundToQuarterStart(time),
-                            backgroundColor: 'rgba(255, 152, 0, 0.15)',
-                            borderColor: 'rgba(255, 152, 0, 0.4)',
-                            borderWidth: 1
-                        };
-                        rhAnnotationIndex++;
-                        heaterOnStart = null;
-                    }
-                }
-                
-                // If still on at end, extend to current time
-                if (heaterOnStart !== null) {
-                    const endTime = new Date();
-                    endTime.setMinutes(Math.floor(endTime.getMinutes() / 15) * 15 + 15, 0, 0);
-                    roomHeaterAnnotations[`heater${rhAnnotationIndex}`] = {
-                        type: 'box',
-                        xMin: heaterOnStart,
-                        xMax: endTime,
-                        backgroundColor: 'rgba(255, 152, 0, 0.15)',
-                        borderColor: 'rgba(255, 152, 0, 0.4)',
-                        borderWidth: 1
-                    };
-                }
-            }
+            // Create room heater fill dataset - shows temperature fill only when heater is ON
+            // This creates a visual "fill to temperature line" effect
+            const heaterFillPoints = tempPoints.map(point => {
+                const heaterOn = isRoomHeaterOnAt(point.x);
+                return {
+                    x: point.x,
+                    y: heaterOn ? point.y : null  // null when heater is off (creates gaps)
+                };
+            });
             
             if (indoorTempChart) {
                 indoorTempChart.destroy();
@@ -1298,6 +1249,18 @@
                             fill: false
                         },
                         {
+                            label: 'Huonelämmitin päällä',
+                            data: heaterFillPoints,
+                            borderColor: 'rgba(255, 152, 0, 0)',  // No line border
+                            backgroundColor: 'rgba(255, 152, 0, 0.25)',
+                            yAxisID: 'y',
+                            stepped: true,
+                            pointRadius: 0,
+                            borderWidth: 0,
+                            fill: 'origin',  // Fill from x-axis (0) to the data points
+                            spanGaps: false  // Don't connect across null values (creates separate filled areas)
+                        },
+                        {
                             label: 'Lämpötila',
                             data: tempPoints,
                             borderColor: '#007bff',
@@ -1320,6 +1283,10 @@
                         legend: {
                             display: true,
                             labels: {
+                                filter: function(legendItem, chartData) {
+                                    // Hide the heater fill from auto-generated legend
+                                    return legendItem.text !== 'Huonelämmitin päällä';
+                                },
                                 generateLabels: function(chart) {
                                     const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
                                     // Add custom legend item for room heater ON periods
@@ -1335,6 +1302,10 @@
                             }
                         },
                         tooltip: {
+                            filter: function(tooltipItem) {
+                                // Hide 'Huonelämmitin päällä' from tooltip
+                                return tooltipItem.dataset.label !== 'Huonelämmitin päällä';
+                            },
                             callbacks: {
                                 label: function(context) {
                                     const label = context.dataset.label || '';
@@ -1350,9 +1321,6 @@
                                     return label + ': ' + value + ' °C';
                                 }
                             }
-                        },
-                        annotation: {
-                            annotations: roomHeaterAnnotations
                         }
                     },
                     scales: {
