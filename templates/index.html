@@ -1497,7 +1497,9 @@
                                     if (context.parsed.y === null) {
                                         return 'Ei dataa';
                                     }
-                                    return context.parsed.y.toFixed(2) + ' c/kWh';
+                                    // Multiply by 100 to convert from EUR to cents
+                                    const value = context.parsed.y * 100;
+                                    return value.toFixed(2) + ' c/kWh';
                                 }
                             }
                         }
@@ -1532,7 +1534,8 @@
                             beginAtZero: true,
                             ticks: {
                                 callback: function(value) {
-                                    return value.toFixed(2);
+                                    // Multiply by 100 to convert from EUR to cents
+                                    return (value * 100).toFixed(2);
                                 }
                             }
                         }
