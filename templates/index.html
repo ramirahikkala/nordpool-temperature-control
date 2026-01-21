@@ -672,10 +672,13 @@
                             blockStart = time;
                         } else if (state === 'off' && blockStart !== null) {
                             // Heating blocked period ends
+                            // Use -0.5 and +0.5 to align box edges with bar edges (bars are centered on index)
+                            const startIdx = blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15);
+                            const endIdx = time.getHours() * 4 + Math.floor(time.getMinutes() / 15);
                             annotations[`block${annotationIndex}`] = {
                                 type: 'box',
-                                xMin: blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15),
-                                xMax: time.getHours() * 4 + Math.floor(time.getMinutes() / 15),
+                                xMin: startIdx - 0.5,
+                                xMax: endIdx - 0.5,
                                 backgroundColor: 'rgba(220, 53, 69, 0.1)',
                                 borderColor: 'rgba(220, 53, 69, 0.3)',
                                 borderWidth: 1
@@ -688,10 +691,11 @@
                     // If still in blocked state, extend to now
                     if (blockStart !== null) {
                         const currentIndex = now.getHours() * 4 + Math.floor(now.getMinutes() / 15);
+                        const startIdx = blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15);
                         annotations[`block${annotationIndex}`] = {
                             type: 'box',
-                            xMin: blockStart.getHours() * 4 + Math.floor(blockStart.getMinutes() / 15),
-                            xMax: currentIndex,
+                            xMin: startIdx - 0.5,
+                            xMax: currentIndex + 0.5,
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
                             borderWidth: 1
@@ -932,10 +936,11 @@
                         } else if (newState === 'off' && currentState === 'on') {
                             // Transition from ON to OFF (blocking ends)
                             if (blockStart !== null) {
+                                // Use -0.5 and +0.5 to align box edges with bar edges (bars are centered on index)
                                 annotations[`block${annotationIndex}`] = {
                                     type: 'box',
-                                    xMin: blockStart,
-                                    xMax: quarterIndex,
+                                    xMin: blockStart - 0.5,
+                                    xMax: quarterIndex - 0.5,
                                     backgroundColor: 'rgba(220, 53, 69, 0.1)',
                                     borderColor: 'rgba(220, 53, 69, 0.3)',
                                     borderWidth: 1
@@ -951,8 +956,8 @@
                     if (currentState === 'on' && blockStart !== null) {
                         annotations[`block${annotationIndex}`] = {
                             type: 'box',
-                            xMin: blockStart,
-                            xMax: 95, // End of day (23:45)
+                            xMin: blockStart - 0.5,
+                            xMax: 95.5, // End of day (23:45) - right edge of last bar
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
                             borderWidth: 1
@@ -974,8 +979,8 @@
                         
                         annotations[`block${annotationIndex}`] = {
                             type: 'box',
-                            xMin: 0, // Start of day
-                            xMax: blockEndQuarter,
+                            xMin: -0.5, // Start of day - left edge of first bar
+                            xMax: blockEndQuarter - 0.5,
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
                             borderWidth: 1
@@ -1484,9 +1489,23 @@
                 
                 let blockStart = null;
                 
+                // Helper function to round time to start of 15-minute quarter
+                const roundToQuarterStart = (date) => {
+                    const d = new Date(date);
+                    d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0);
+                    return d;
+                };
+                
+                // Helper function to round time to end of 15-minute quarter
+                const roundToQuarterEnd = (date) => {
+                    const d = new Date(date);
+                    d.setMinutes(Math.floor(d.getMinutes() / 15) * 15 + 15, 0, 0);
+                    return d;
+                };
+                
                 // If heating was blocked at the start of the period, mark the start
                 if (stateAtStart === 'on') {
-                    blockStart = startTime;
+                    blockStart = roundToQuarterStart(startTime);
                 }
                 
                 for (const point of relevantData) {
@@ -1494,14 +1513,14 @@
                     const state = point.value;
                     
                     if (state === 'on' && blockStart === null) {
-                        // Heating blocked period starts
-                        blockStart = time;
+                        // Heating blocked period starts - round to start of this quarter
+                        blockStart = roundToQuarterStart(time);
                     } else if (state === 'off' && blockStart !== null) {
-                        // Heating blocked period ends
+                        // Heating blocked period ends - round to start of this quarter (end of previous)
                         blockedAnnotations[`block${annotationIndex}`] = {
                             type: 'box',
                             xMin: blockStart,
-                            xMax: time,
+                            xMax: roundToQuarterStart(time),
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderColor: 'rgba(220, 53, 69, 0.3)',
                             borderWidth: 1
@@ -1511,12 +1530,12 @@
                     }
                 }
                 
-                // If still in blocked state, extend to now
+                // If still in blocked state, extend to end of current quarter
                 if (blockStart !== null) {
                     blockedAnnotations[`block${annotationIndex}`] = {
                         type: 'box',
                         xMin: blockStart,
-                        xMax: now,
+                        xMax: roundToQuarterEnd(now),
                         backgroundColor: 'rgba(220, 53, 69, 0.1)',
                         borderColor: 'rgba(220, 53, 69, 0.3)',
                         borderWidth: 1
