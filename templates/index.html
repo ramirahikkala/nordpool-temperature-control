@@ -1458,6 +1458,45 @@
                 }));
             }
             
+            // Get central heating blocked periods for annotations
+            const centralHeatingEntity = historyData.central_heating_entity;
+            const blockedAnnotations = [];
+            
+            if (centralHeatingEntity && entities[centralHeatingEntity]) {
+                const centralHeatingData = entities[centralHeatingEntity];
+                let lastTimestamp = null;
+                let lastState = null;
+                
+                centralHeatingData.forEach(point => {
+                    const timestamp = new Date(point.timestamp);
+                    const state = point.value;
+                    
+                    if (lastState === 'on' && lastTimestamp) {
+                        // Central heating was blocked (switch ON = blocked)
+                        blockedAnnotations.push({
+                            type: 'line',
+                            xMin: lastTimestamp,
+                            xMax: lastTimestamp,
+                            borderColor: 'rgba(220, 53, 69, 0.7)',
+                            borderWidth: 2,
+                            label: {
+                                content: 'Keskuslämmitys pois',
+                                enabled: true,
+                                position: 'start',
+                                backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                                color: 'white',
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        });
+                    }
+                    
+                    lastTimestamp = timestamp;
+                    lastState = state;
+                });
+            }
+            
             if (rollingPriceChart) {
                 rollingPriceChart.destroy();
             }
@@ -1502,6 +1541,9 @@
                                     return value.toFixed(2) + ' c/kWh';
                                 }
                             }
+                        },
+                        annotation: {
+                            annotations: blockedAnnotations
                         }
                     },
                     scales: {
