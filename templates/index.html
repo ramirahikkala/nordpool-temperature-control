@@ -383,6 +383,13 @@
                     <canvas id="yesterdayPriceChart"></canvas>
                 </div>
             </div>
+            
+            <div class="card">
+                <h2>💰 Sähkönhinta liukuva 24 h</h2>
+                <div class="chart-container">
+                    <canvas id="rollingPriceChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -390,6 +397,7 @@
         let priceChart = null;
         let tomorrowPriceChart = null;
         let yesterdayPriceChart = null;
+        let rollingPriceChart = null;
         let indoorTempChart = null;
         let roomHeaterChart = null;
         let outdoorTempChart = null;
@@ -1055,6 +1063,7 @@
                 updateIndoorTempChart(data);
                 updateOutdoorTempChart(data);
                 updateRoomHeaterChart();
+                updateRollingPriceChart(data);
                 
             } catch (error) {
                 console.error('Error loading history:', error);
@@ -1394,6 +1403,94 @@
                                 display: true,
                                 text: 'Ulkolämpötila (°C)'
                             }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateRollingPriceChart(historyData) {
+            const ctx = document.getElementById('rollingPriceChart').getContext('2d');
+            
+            const entities = historyData.entities;
+            
+            // Get Nordpool price history (already in c/kWh from HA sensor)
+            const nordpoolEntity = historyData.nordpool_price_entity;
+            let pricePoints = [];
+            
+            if (nordpoolEntity && entities[nordpoolEntity]) {
+                const nordpoolData = entities[nordpoolEntity];
+                pricePoints = nordpoolData.map(p => {
+                    const value = typeof p.value === 'number' ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value));
+                    return {
+                        x: new Date(p.timestamp),
+                        y: value  // Already in c/kWh, no conversion needed
+                    };
+                }).filter(p => p.y !== null);
+            }
+            
+            if (rollingPriceChart) {
+                rollingPriceChart.destroy();
+            }
+            
+            rollingPriceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Sähkönhinta (c/kWh)',
+                            data: pricePoints,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            yAxisID: 'y',
+                            stepped: false,
+                            pointRadius: 1,
+                            borderWidth: 2,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toFixed(2) + ' c/kWh';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'HH:mm'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Aika'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Hinta (c/kWh)'
+                            },
+                            beginAtZero: true
                         }
                     }
                 }
