@@ -350,14 +350,7 @@
             </div>
             
             <div class="card">
-                <h2>🔥 Huonelämmitin (24 h)</h2>
-                <div class="chart-container" style="height: 200px;">
-                    <canvas id="roomHeaterChart"></canvas>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>💰 Sähkönhinta liukuva 24 h</h2>
+                <h2> Sähkönhinta liukuva 24 h</h2>
                 <div class="chart-container">
                     <canvas id="rollingPriceChart"></canvas>
                 </div>
@@ -399,7 +392,6 @@
         let yesterdayPriceChart = null;
         let rollingPriceChart = null;
         let indoorTempChart = null;
-        let roomHeaterChart = null;
         let outdoorTempChart = null;
         let currentStatus = null;
         
@@ -1067,7 +1059,6 @@
                 const data = await response.json();
                 updateIndoorTempChart(data);
                 updateOutdoorTempChart(data);
-                updateRoomHeaterChart();
                 updateRollingPriceChart(data);
                 
             } catch (error) {
@@ -1142,7 +1133,64 @@
                 return isOn;
             }
             
-            // Room heater visualization removed from client-side (handled server-side or via central heating endpoint)
+            // Create room heater ON annotations (orange background when heater is on)
+            const roomHeaterAnnotations = {};
+            let rhAnnotationIndex = 0;
+            
+            // Helper function to round time to quarter boundaries
+            const roundToQuarterStart = (date) => {
+                const d = new Date(date);
+                d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0);
+                return d;
+            };
+            
+            if (roomHeaterData.length > 0) {
+                let heaterOnStart = null;
+                
+                // If heater was on at start of day, mark the start
+                if (roomHeaterStateAtDayStart === 'on') {
+                    // Find the earliest data point time or use start of day
+                    const earliestDataTime = tempPoints.length > 0 ? tempPoints[0].x : startOfDay;
+                    heaterOnStart = roundToQuarterStart(earliestDataTime);
+                }
+                
+                // Process state changes
+                for (const point of roomHeaterData) {
+                    const time = new Date(point.timestamp);
+                    const state = point.value;
+                    
+                    if (state === 'on' && heaterOnStart === null) {
+                        // Heater turned ON
+                        heaterOnStart = roundToQuarterStart(time);
+                    } else if (state === 'off' && heaterOnStart !== null) {
+                        // Heater turned OFF - create annotation
+                        roomHeaterAnnotations[`heater${rhAnnotationIndex}`] = {
+                            type: 'box',
+                            xMin: heaterOnStart,
+                            xMax: roundToQuarterStart(time),
+                            backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                            borderColor: 'rgba(255, 152, 0, 0.4)',
+                            borderWidth: 1
+                        };
+                        rhAnnotationIndex++;
+                        heaterOnStart = null;
+                    }
+                }
+                
+                // If still on at end, extend to current time
+                if (heaterOnStart !== null) {
+                    const endTime = new Date();
+                    endTime.setMinutes(Math.floor(endTime.getMinutes() / 15) * 15 + 15, 0, 0);
+                    roomHeaterAnnotations[`heater${rhAnnotationIndex}`] = {
+                        type: 'box',
+                        xMin: heaterOnStart,
+                        xMax: endTime,
+                        backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                        borderColor: 'rgba(255, 152, 0, 0.4)',
+                        borderWidth: 1
+                    };
+                }
+            }
             
             if (indoorTempChart) {
                 indoorTempChart.destroy();
@@ -1272,13 +1320,17 @@
                         legend: {
                             display: true,
                             labels: {
-                                filter: function(legendItem, chartData) {
-                                    // Only show temperature in legend
-                                    return true;
-                                },
                                 generateLabels: function(chart) {
-                                    // Return default legend items only
-                                    return Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                    const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                    // Add custom legend item for room heater ON periods
+                                    original.push({
+                                        text: 'Huonelämmitin päällä',
+                                        fillStyle: 'rgba(255, 152, 0, 0.4)',
+                                        strokeStyle: 'rgba(255, 152, 0, 0.6)',
+                                        lineWidth: 1,
+                                        hidden: false
+                                    });
+                                    return original;
                                 }
                             }
                         },
@@ -1298,6 +1350,9 @@
                                     return label + ': ' + value + ' °C';
                                 }
                             }
+                        },
+                        annotation: {
+                            annotations: roomHeaterAnnotations
                         }
                     },
                     scales: {
@@ -1652,131 +1707,6 @@
                     }
                 }
             });
-        }
-        
-        async function updateRoomHeaterChart() {
-            try {
-                // Get room heater entity from configuration
-                const configResponse = await fetch('/api/config');
-                if (!configResponse.ok) {
-                    console.error('Failed to fetch config');
-                    return;
-                }
-                const config = await configResponse.json();
-                const roomHeaterEntity = config.SWITCH_ENTITY;
-                
-                if (!roomHeaterEntity) {
-                    console.warn('Room heater entity not configured');
-                    return;
-                }
-                
-                // Fetch room heater status history for last 24 hours (matching history chart)
-                const switchHistoryResponse = await fetch(`/api/switch-history?entity_id=${encodeURIComponent(roomHeaterEntity)}&hours=24`);
-                if (!switchHistoryResponse.ok) {
-                    console.error('Failed to fetch switch history');
-                    return;
-                }
-                const switchData = await switchHistoryResponse.json();
-                
-                const ctx = document.getElementById('roomHeaterChart').getContext('2d');
-                
-                // Calculate time range for last 24 hours
-                const now = new Date();
-                const last24hStart = new Date(now - 24 * 60 * 60 * 1000);
-                
-                const roomHeaterPoints = switchData.quarters.map((state, index) => {
-                    const timestamp = new Date(last24hStart);
-                    timestamp.setMinutes(timestamp.getMinutes() + index * 15);
-                    
-                    return {
-                        x: timestamp,
-                        y: state === 'on' ? 1 : 0
-                    };
-                });
-                
-                if (roomHeaterChart) {
-                    roomHeaterChart.destroy();
-                }
-                
-                roomHeaterChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        datasets: [
-                            {
-                                label: 'Huonelämmitin ON/OFF',
-                                data: roomHeaterPoints,
-                                backgroundColor: (context) => {
-                                    const dataPoint = context.raw;
-                                    return dataPoint.y === 1 ? 'rgba(220, 53, 69, 0.7)' : 'rgba(108, 117, 125, 0.2)';
-                                },
-                                borderColor: (context) => {
-                                    const dataPoint = context.raw;
-                                    return dataPoint.y === 1 ? '#dc3545' : '#6c757d';
-                                },
-                                borderWidth: 1,
-                                barPercentage: 1.0,
-                                categoryPercentage: 1.0
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        indexAxis: 'x',
-                        plugins: {
-                            legend: {
-                                display: true,
-                                labels: {
-                                    boxWidth: 15,
-                                    font: {
-                                        size: 12
-                                    }
-                                }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return context.raw.y === 1 ? 'PÄÄLLÄ' : 'POIS';
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                type: 'time',
-                                min: last24hStart.getTime(),
-                                max: now.getTime(),
-                                time: {
-                                    unit: 'hour',
-                                    stepSize: 2,
-                                    displayFormats: {
-                                        hour: 'HH:mm'
-                                    }
-                                },
-                                title: {
-                                    display: true,
-                                    text: 'Aika (viimeiset 24 h)'
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                max: 1,
-                                ticks: {
-                                    callback: function(value) {
-                                        return value === 1 ? 'PÄÄLLÄ' : 'POIS';
-                                    }
-                                },
-                                title: {
-                                    display: true,
-                                    text: 'Tila'
-                                }
-                            }
-                        }
-                    }
-                });
-            } catch (error) {
-                console.error('Error loading room heater chart:', error);
-            }
         }
         
         // Auto-refresh every 5 minutes
