@@ -1420,13 +1420,42 @@
             
             if (nordpoolEntity && entities[nordpoolEntity]) {
                 const nordpoolData = entities[nordpoolEntity];
-                pricePoints = nordpoolData.map(p => {
+                
+                // Create 96 quarter-hour slots for the last 24 hours
+                const now = new Date();
+                const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                
+                // Initialize array with null values for all 96 quarters
+                const quarters = Array(96).fill(null);
+                const quarterTimes = [];
+                
+                // Generate timestamp for each quarter
+                for (let i = 0; i < 96; i++) {
+                    const time = new Date(startTime.getTime() + i * 15 * 60 * 1000);
+                    quarterTimes.push(time);
+                }
+                
+                // Fill in actual price data where available
+                nordpoolData.forEach(p => {
                     const value = typeof p.value === 'number' ? p.value : (isNaN(parseFloat(p.value)) ? null : parseFloat(p.value));
-                    return {
-                        x: new Date(p.timestamp),
-                        y: value  // Already in c/kWh, no conversion needed
-                    };
-                }).filter(p => p.y !== null);
+                    if (value !== null) {
+                        const timestamp = new Date(p.timestamp);
+                        
+                        // Find which quarter this timestamp belongs to
+                        const timeSinceStart = timestamp - startTime;
+                        const quarterIndex = Math.floor(timeSinceStart / (15 * 60 * 1000));
+                        
+                        if (quarterIndex >= 0 && quarterIndex < 96) {
+                            quarters[quarterIndex] = value;
+                        }
+                    }
+                });
+                
+                // Create data points with timestamps
+                pricePoints = quarterTimes.map((time, i) => ({
+                    x: time,
+                    y: quarters[i]
+                }));
             }
             
             if (rollingPriceChart) {
@@ -1465,6 +1494,9 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
+                                    if (context.parsed.y === null) {
+                                        return 'Ei dataa';
+                                    }
                                     return context.parsed.y.toFixed(2) + ' c/kWh';
                                 }
                             }
