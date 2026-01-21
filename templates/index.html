@@ -1428,13 +1428,17 @@
                 
                 // Create 96 quarter-hour slots for the last 24 hours
                 const now = new Date();
-                const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                // Round down to the start of current quarter (e.g., 14:42 -> 14:30)
+                const currentQuarterStart = new Date(now);
+                currentQuarterStart.setMinutes(Math.floor(now.getMinutes() / 15) * 15, 0, 0);
+                // Go back 24 hours from the start of current quarter
+                const startTime = new Date(currentQuarterStart.getTime() - 24 * 60 * 60 * 1000);
                 
                 // Initialize array with null values for all 96 quarters
                 const quarters = Array(96).fill(null);
                 const quarterTimes = [];
                 
-                // Generate timestamp for each quarter
+                // Generate timestamp for each quarter (now aligned to :00, :15, :30, :45)
                 for (let i = 0; i < 96; i++) {
                     const time = new Date(startTime.getTime() + i * 15 * 60 * 1000);
                     quarterTimes.push(time);
@@ -1468,10 +1472,14 @@
             const blockedAnnotations = {};
             let annotationIndex = 0;
             
+            // Use the same aligned time calculation as price data
+            const now = new Date();
+            const currentQuarterStart = new Date(now);
+            currentQuarterStart.setMinutes(Math.floor(now.getMinutes() / 15) * 15, 0, 0);
+            const startTime = new Date(currentQuarterStart.getTime() - 24 * 60 * 60 * 1000);
+            
             if (centralHeatingEntity && entities[centralHeatingEntity]) {
                 const centralHeatingData = entities[centralHeatingEntity];
-                const now = new Date();
-                const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
                 
                 // Filter to last 24h and sort by timestamp
                 const relevantData = centralHeatingData
