@@ -80,8 +80,10 @@ PRICE_ALWAYS_ON_THRESHOLD = float(os.getenv("PRICE_ALWAYS_ON_THRESHOLD", "5.0"))
 # External Integrations
 # =============================================================================
 HEALTHCHECK_URL = os.getenv("HEALTHCHECK_URL")  # Optional healthcheck ping URL
-SHELLY_TEMP_URL = os.getenv("SHELLY_TEMP_URL", "")  # Optional Shelly external temp URL
-SHELLY_TEMP_SENSOR = os.getenv("SHELLY_TEMP_SENSOR", "")  # Sensor to send to Shelly (if different from TEMPERATURE_SENSOR)
+
+# Bathroom radiator thermostat - sends temperature from HA sensor to Shelly TRV
+BATHROOM_TEMP_SENSOR = os.getenv("BATHROOM_TEMP_SENSOR", "")  # e.g., sensor.adjusted_kylppari
+BATHROOM_THERMOSTAT_URL = os.getenv("BATHROOM_THERMOSTAT_URL", "")  # e.g., http://192.168.86.32/ext_t?temp=
 
 # =============================================================================
 # Timezone
