@@ -1,18 +1,20 @@
 """
 Unit tests for electricity price-based temperature control.
-Run with: pytest test_temperature_control.py -v
+Run with: pytest tests/ -v
 """
 
 import pytest
 import os
 
-# Set dummy token for tests before importing main
+# Set dummy token for tests before importing modules
 os.environ.setdefault("HA_API_TOKEN", "test_token_for_unit_tests")
 
-from main import (
+from src.temperature_logic import (
     calculate_temperature_adjustment,
     get_setpoint_temperature,
     should_central_heating_run,
+)
+from src.config import (
     BASE_TEMPERATURE_FALLBACK,
     PRICE_LOW_THRESHOLD,
     PRICE_HIGH_THRESHOLD,
