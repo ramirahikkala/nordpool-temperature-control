@@ -54,6 +54,13 @@ HA_API_TOKEN=your_token_here
 # Sensors and Entities
 PRICE_SENSOR=sensor.nordpool_kwh_fi_eur_3_10_0255
 SWITCH_ENTITY=switch.shelly1minig3_5432044efb74
+TEMPERATURE_SENSOR=sensor.your_temperature_sensor  # Indoor temperature sensor
+OUTDOOR_TEMP_SENSOR=sensor.your_outdoor_temp  # Optional outdoor temperature
+
+# Shelly External Temperature (Optional)
+# Send temperature updates to Shelly device for external temperature control
+# Example: http://192.168.86.32/ext_t?temp=
+SHELLY_TEMP_URL=  # Leave empty to disable
 
 # Temperature Control Settings
 BASE_TEMPERATURE=21.0  # Fallback if input_number not used

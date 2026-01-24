@@ -43,6 +43,10 @@ load_dotenv()
 # Outdoor temperature sensor (optional - leave empty to disable outdoor temp display)
 OUTDOOR_TEMP_SENSOR = os.getenv("OUTDOOR_TEMP_SENSOR", "")
 
+# Shelly external temperature URL (optional - leave empty to disable)
+# Example: http://192.168.86.32/ext_t?temp=
+SHELLY_TEMP_URL = os.getenv("SHELLY_TEMP_URL", "")
+
 
 def get_yesterday_prices():
     """Get yesterday's prices from Spot-Hinta API (if available).
@@ -119,6 +123,9 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 900}
 # Track if cache warmer has been started (to prevent multiple instances)
 _cache_warmer_started = False
 
+# Track if Shelly temperature sender has been started
+_shelly_temp_sender_started = False
+
 
 def start_cache_warmer_once():
     """Start cache warmer only once, even if module is loaded multiple times."""
@@ -127,6 +134,15 @@ def start_cache_warmer_once():
         thread = threading.Thread(target=warm_cache, daemon=True)
         thread.start()
         _cache_warmer_started = True
+
+
+def start_shelly_temp_sender_once():
+    """Start Shelly temperature sender only once, even if module is loaded multiple times."""
+    global _shelly_temp_sender_started
+    if not _shelly_temp_sender_started and SHELLY_TEMP_URL:
+        thread = threading.Thread(target=send_temperature_to_shelly, daemon=True)
+        thread.start()
+        _shelly_temp_sender_started = True
 
 
 @app.route('/')
@@ -842,6 +858,53 @@ def clear_cache():
         return jsonify({"error": str(e)}), 500
 
 
+def send_temperature_to_shelly():
+    """Send current temperature to Shelly device every 5 minutes.
+    
+    This background task sends the current temperature reading to a Shelly device
+    via HTTP GET request. The Shelly device can use this for external temperature
+    control (e.g., radiator thermostat).
+    
+    Failures are logged but don't stop the loop - the device may be temporarily
+    unavailable or network issues may occur.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not SHELLY_TEMP_URL:
+        logger.info("Shelly temperature sender disabled (SHELLY_TEMP_URL not configured)")
+        return
+    
+    logger.info(f"Starting Shelly temperature sender (URL: {SHELLY_TEMP_URL})")
+    
+    while True:
+        try:
+            # Get current temperature from Home Assistant
+            temp = get_current_temperature()
+            
+            if temp is not None:
+                # Send to Shelly device
+                url = f"{SHELLY_TEMP_URL}{temp}"
+                response = requests.get(url, timeout=5)
+                
+                if response.status_code == 200:
+                    logger.debug(f"Sent temperature {temp}°C to Shelly device")
+                else:
+                    logger.warning(f"Failed to send temperature to Shelly: HTTP {response.status_code}")
+            else:
+                logger.warning("Could not get current temperature from HA, skipping Shelly update")
+        
+        except requests.exceptions.Timeout:
+            logger.warning("Timeout sending temperature to Shelly device")
+        except requests.exceptions.ConnectionError:
+            logger.warning("Connection error sending temperature to Shelly device")
+        except Exception as e:
+            logger.warning(f"Error sending temperature to Shelly: {e}")
+        
+        # Wait 5 minutes (300 seconds) between updates
+        time.sleep(300)
+
+
 def warm_cache():
     """Pre-warm the cache by fetching all key endpoints every 15 minutes.
     
@@ -890,15 +953,25 @@ def warm_cache():
 # This must be after warm_cache() is defined
 start_cache_warmer_once()
 
+# Start Shelly temperature sender when module is imported
+# This must be after send_temperature_to_shelly() is defined
+start_shelly_temp_sender_once()
+
 
 def start_cache_warmer():
     """Start the background cache warming thread."""
     start_cache_warmer_once()
 
 
+def start_shelly_temp_sender():
+    """Start the background Shelly temperature sender thread."""
+    start_shelly_temp_sender_once()
+
+
 if __name__ == '__main__':
-    # Start cache warming background task
+    # Start background tasks
     start_cache_warmer()
+    start_shelly_temp_sender()
     
     # Run Flask development server
     port = int(os.getenv('WEB_PORT', 5000))
