@@ -5,6 +5,7 @@ This module contains the main control cycle that:
 1. Reads current temperature and price
 2. Calculates target setpoint
 3. Controls room heater and central heating
+4. Updates bathroom thermostat with price-adjusted temperature
 """
 import logging
 
@@ -14,6 +15,7 @@ from .config import (
     CENTRAL_HEATING_SHUTOFF_SWITCH,
     MAX_SHUTOFF_HOURS,
     PRICE_ALWAYS_ON_THRESHOLD,
+    BATHROOM_THERMOSTAT_URL,
 )
 from .ha_client import (
     get_base_temperature,
@@ -30,6 +32,7 @@ from .temperature_logic import (
     should_central_heating_run,
     log_heating_decision,
 )
+from .background_tasks import send_temperature_to_bathroom_thermostat
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +131,15 @@ def run_control():
             else:
                 logger.warning("Could not retrieve daily prices for central heating control")
                 logger.info("=" * 60)
+        
+        # Bathroom thermostat control (if configured)
+        if BATHROOM_THERMOSTAT_URL:
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("Bathroom Thermostat Control")
+            logger.info("=" * 60)
+            send_temperature_to_bathroom_thermostat()
+            logger.info("=" * 60)
         
         # Ping healthcheck to indicate successful completion
         ping_healthcheck(success=True)

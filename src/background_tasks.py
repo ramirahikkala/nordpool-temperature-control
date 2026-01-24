@@ -3,85 +3,113 @@ Background Tasks for Temperature Control System.
 
 Contains long-running background tasks:
 - Cache warmer: Pre-fetches API data to speed up web UI
-- Bathroom thermostat: Sends temperature to Shelly TRV
+- Bathroom thermostat: Sends price-adjusted temperature to Shelly TRV
 """
 import logging
 import time
 import requests
 
 from .config import BATHROOM_THERMOSTAT_URL, BATHROOM_TEMP_SENSOR, HA_URL, HA_HEADERS
-from .ha_client import get_current_temperature
+from .ha_client import get_current_price
 
 logger = logging.getLogger(__name__)
 
 
-def get_bathroom_temperature():
-    """Get temperature to send to bathroom thermostat.
+def get_bathroom_raw_temperature():
+    """Get raw temperature from bathroom sensor (Ruuvitag).
     
-    Uses BATHROOM_TEMP_SENSOR if configured, otherwise falls back to TEMPERATURE_SENSOR.
+    Returns:
+        float: Raw temperature in Celsius, or None if unavailable
     """
-    if BATHROOM_TEMP_SENSOR:
-        # Use dedicated bathroom sensor
-        try:
-            response = requests.get(
-                f"{HA_URL}/api/states/{BATHROOM_TEMP_SENSOR}",
-                headers=HA_HEADERS,
-                timeout=5
-            )
-            if response.status_code == 200:
-                return float(response.json().get('state'))
-        except Exception as e:
-            logger.warning(f"Error reading {BATHROOM_TEMP_SENSOR}: {e}")
+    if not BATHROOM_TEMP_SENSOR:
         return None
-    else:
-        # Fall back to main temperature sensor
-        return get_current_temperature()
+    
+    try:
+        response = requests.get(
+            f"{HA_URL}/api/states/{BATHROOM_TEMP_SENSOR}",
+            headers=HA_HEADERS,
+            timeout=5
+        )
+        if response.status_code == 200:
+            state = response.json().get('state')
+            if state and state != 'unavailable' and state != 'unknown':
+                return float(state)
+    except Exception as e:
+        logger.warning(f"Error reading {BATHROOM_TEMP_SENSOR}: {e}")
+    return None
+
+
+def calculate_bathroom_adjusted_temperature(raw_temp: float, price: float) -> float:
+    """Calculate price-adjusted temperature for bathroom thermostat.
+    
+    Same logic as HA template sensor:
+    adjusted_temp = base_temp + (electricity_price - 5) / 5
+    
+    This makes the thermostat think it's warmer when electricity is expensive
+    (so it heats less) and cooler when electricity is cheap (so it heats more).
+    
+    Args:
+        raw_temp: Raw temperature from sensor
+        price: Current electricity price in c/kWh
+        
+    Returns:
+        Adjusted temperature to send to thermostat
+    """
+    adjustment = (price - 5) / 5
+    return raw_temp + adjustment
 
 
 def send_temperature_to_bathroom_thermostat():
-    """Send current temperature to bathroom thermostat every 5 minutes.
+    """Send price-adjusted temperature to bathroom thermostat.
     
-    This background task sends the current bathroom temperature reading to a 
-    Shelly TRV (thermostatic radiator valve) via HTTP GET request. The TRV uses
-    this external temperature instead of its built-in sensor for more accurate
-    room temperature control.
+    This function sends the current bathroom temperature (adjusted for electricity
+    price) to a Shelly TRV via HTTP GET request. The TRV uses this external 
+    temperature for room control.
     
-    Failures are logged but don't stop the loop - the device may be temporarily
-    unavailable or network issues may occur.
+    Called from main control cycle every 15 minutes.
+    
+    Returns:
+        bool: True if successful, False otherwise
     """
     if not BATHROOM_THERMOSTAT_URL:
-        logger.info("Bathroom thermostat sender disabled (BATHROOM_THERMOSTAT_URL not configured)")
-        return
+        return False
     
-    sensor_info = f" (sensor: {BATHROOM_TEMP_SENSOR})" if BATHROOM_TEMP_SENSOR else ""
-    logger.info(f"Starting bathroom thermostat sender (URL: {BATHROOM_THERMOSTAT_URL}){sensor_info}")
+    try:
+        # Get raw temperature from Ruuvitag
+        raw_temp = get_bathroom_raw_temperature()
+        if raw_temp is None:
+            logger.warning("Could not get bathroom temperature, skipping thermostat update")
+            return False
+        
+        # Get current electricity price
+        price = get_current_price()
+        if price is None:
+            logger.warning("Could not get electricity price, using raw temperature")
+            adjusted_temp = raw_temp
+        else:
+            # Apply price adjustment (same formula as HA template)
+            adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, price)
+            logger.info(f"Bathroom temp: {raw_temp:.1f}°C raw, {adjusted_temp:.1f}°C adjusted (price: {price:.2f} c/kWh)")
+        
+        # Send to Shelly TRV
+        url = f"{BATHROOM_THERMOSTAT_URL}{adjusted_temp:.1f}"
+        response = requests.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            logger.info(f"Sent {adjusted_temp:.1f}°C to bathroom thermostat")
+            return True
+        else:
+            logger.warning(f"Failed to send temperature to bathroom thermostat: HTTP {response.status_code}")
+            return False
     
-    while True:
-        try:
-            # Get temperature to send (from dedicated sensor or main sensor)
-            temp = get_bathroom_temperature()
-            
-            if temp is not None:
-                # Send to Shelly TRV
-                url = f"{BATHROOM_THERMOSTAT_URL}{temp}"
-                response = requests.get(url, timeout=5)
-                
-                if response.status_code == 200:
-                    logger.debug(f"Sent temperature {temp}°C to bathroom thermostat")
-                else:
-                    logger.warning(f"Failed to send temperature to bathroom thermostat: HTTP {response.status_code}")
-            else:
-                logger.warning("Could not get bathroom temperature from HA, skipping thermostat update")
-        
-        except requests.exceptions.Timeout:
-            logger.warning("Timeout sending temperature to bathroom thermostat")
-        except requests.exceptions.ConnectionError:
-            logger.warning("Connection error sending temperature to bathroom thermostat")
-        except Exception as e:
-            logger.warning(f"Error sending temperature to bathroom thermostat: {e}")
-        
-        # Wait 5 minutes (300 seconds) between updates
-        time.sleep(300)
+    except requests.exceptions.Timeout:
+        logger.warning("Timeout sending temperature to bathroom thermostat")
+    except requests.exceptions.ConnectionError:
+        logger.warning("Connection error sending temperature to bathroom thermostat")
+    except Exception as e:
+        logger.warning(f"Error sending temperature to bathroom thermostat: {e}")
+    
+    return False
 
 
 def warm_cache(app, endpoints):

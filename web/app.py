@@ -29,7 +29,6 @@ from src.config import (
     PRICE_HIGH_THRESHOLD,
     TEMP_VARIATION,
     SETPOINT_OUTPUT,
-    BATHROOM_THERMOSTAT_URL,
 )
 from src.ha_client import (
     get_base_temperature,
@@ -47,7 +46,7 @@ from src.temperature_logic import (
 )
 from src.control import run_control
 from src.heating_logger import get_decisions, get_decisions_by_date
-from src.background_tasks import send_temperature_to_bathroom_thermostat, warm_cache
+from src.background_tasks import warm_cache
 
 
 # =============================================================================
@@ -66,7 +65,6 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 900}
 
 # Track if background tasks have been started (to prevent multiple instances)
 _cache_warmer_started = False
-_bathroom_thermostat_sender_started = False
 
 
 # =============================================================================
@@ -93,15 +91,6 @@ def start_cache_warmer_once():
         thread = threading.Thread(target=warm_cache, args=(app, endpoints_to_warm), daemon=True)
         thread.start()
         _cache_warmer_started = True
-
-
-def start_bathroom_thermostat_sender_once():
-    """Start bathroom thermostat sender only once, even if module is loaded multiple times."""
-    global _bathroom_thermostat_sender_started
-    if not _bathroom_thermostat_sender_started and BATHROOM_THERMOSTAT_URL:
-        thread = threading.Thread(target=send_temperature_to_bathroom_thermostat, daemon=True)
-        thread.start()
-        _bathroom_thermostat_sender_started = True
 
 
 # =============================================================================
@@ -690,7 +679,6 @@ def clear_cache():
 
 # Start background tasks when module is imported
 start_cache_warmer_once()
-start_bathroom_thermostat_sender_once()
 
 
 if __name__ == '__main__':
