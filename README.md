@@ -1,75 +1,147 @@
-# Home Assistant Temperature Control
+# Nordpool Temperature Control# Home Assistant Temperature Control
 
-Electricity price-based temperature control system for Home Assistant.
 
-## Features
 
-- Monitors Nordpool electricity prices
-- Adjusts temperature setpoint based on price (±0.5°C variation)
-- Controls Shelly switch for heating
-- Runs automatically every 15 minutes (when prices update)
+Electricity price-based temperature control for Home Assistant.Electricity price-based temperature control system for Home Assistant.
 
-## Configuration
 
-### Create Input Number in Home Assistant (Optional)
 
-To control the base temperature from the HA UI, add this to your `configuration.yaml`:
+## Features## Features
 
-```yaml
-input_number:
+
+
+- Adjusts room heater based on electricity price (±0.5°C from base temperature)- Monitors Nordpool electricity prices
+
+- Blocks central heating during the most expensive hours- Adjusts temperature setpoint based on price (±0.5°C variation)
+
+- Web dashboard with price charts and status- Controls Shelly switch for heating
+
+- Sends temperature to Shelly device for external control- Runs automatically every 15 minutes (when prices update)
+
+
+
+## Quick Start## Configuration
+
+
+
+```bash### Create Input Number in Home Assistant (Optional)
+
+# Copy and edit environment variables
+
+cp .env.example .envTo control the base temperature from the HA UI, add this to your `configuration.yaml`:
+
+
+
+# Run with uv```yaml
+
+uv run main.pyinput_number:
+
   heating_base_temperature:
-    name: Heating Base Temperature
-    min: 15
-    max: 25
+
+# Or run web dashboard    name: Heating Base Temperature
+
+uv run python -m web.app    min: 15
+
+```    max: 25
+
     step: 0.5
-    unit_of_measurement: "°C"
+
+## Configuration    unit_of_measurement: "°C"
+
     icon: mdi:thermometer
-  
+
+Key environment variables in `.env`:  
+
 # `heating_base_temperature` is the only input required here. The calculated
-# target setpoint (base + price adjustment) is published by this script to a
-# sensor entity in Home Assistant (see `SETPOINT_OUTPUT` in the .env file).
-```
 
-**Note:** 
-- `heating_base_temperature` is your desired base temperature (INPUT - you control this)
- - Calculated setpoint is published to the entity configured in `SETPOINT_OUTPUT` (OUTPUT - automatically updated by the script)
+```bash# target setpoint (base + price adjustment) is published by this script to a
 
-After adding, restart Home Assistant.
+HA_URL=https://your-ha-instance# sensor entity in Home Assistant (see `SETPOINT_OUTPUT` in the .env file).
 
-### Setup Environment Variables
+HA_API_TOKEN=your_token```
 
-Create a `.env` file (copy from `.env.example`):
 
-```bash
-cp .env.example .env
-```
 
-Edit `.env` with your settings:
+TEMPERATURE_SENSOR=sensor.indoor_temp**Note:** 
 
-```bash
-# Home Assistant Configuration
-HA_URL=https://ha.ketunmetsa.fi
-HA_API_TOKEN=your_token_here
+SWITCH_ENTITY=switch.room_heater- `heating_base_temperature` is your desired base temperature (INPUT - you control this)
 
-# Sensors and Entities
-PRICE_SENSOR=sensor.nordpool_kwh_fi_eur_3_10_0255
-SWITCH_ENTITY=switch.shelly1minig3_5432044efb74
+CENTRAL_HEATING_SHUTOFF_SWITCH=switch.central_heating  # Optional - Calculated setpoint is published to the entity configured in `SETPOINT_OUTPUT` (OUTPUT - automatically updated by the script)
+
+
+
+BASE_TEMPERATURE=21.0After adding, restart Home Assistant.
+
+TEMP_VARIATION=0.5
+
+```### Setup Environment Variables
+
+
+
+## Project StructureCreate a `.env` file (copy from `.env.example`):
+
+
+
+``````bash
+
+├── main.py              # Entry point (scheduler)cp .env.example .env
+
+├── src/```
+
+│   ├── config.py        # Configuration
+
+│   ├── ha_client.py     # Home Assistant APIEdit `.env` with your settings:
+
+│   ├── temperature_logic.py
+
+│   ├── control.py       # Main control loop```bash
+
+│   └── background_tasks.py# Home Assistant Configuration
+
+├── web/HA_URL=https://ha.ketunmetsa.fi
+
+│   ├── app.py           # Flask dashboardHA_API_TOKEN=your_token_here
+
+│   └── templates/
+
+├── tests/# Sensors and Entities
+
+└── data/PRICE_SENSOR=sensor.nordpool_kwh_fi_eur_3_10_0255
+
+```SWITCH_ENTITY=switch.shelly1minig3_5432044efb74
+
 TEMPERATURE_SENSOR=sensor.your_temperature_sensor  # Indoor temperature sensor
-OUTDOOR_TEMP_SENSOR=sensor.your_outdoor_temp  # Optional outdoor temperature
 
-# Shelly External Temperature (Optional)
-# Send temperature updates to Shelly device for external temperature control
-# Example: http://192.168.86.32/ext_t?temp=
+## DockerOUTDOOR_TEMP_SENSOR=sensor.your_outdoor_temp  # Optional outdoor temperature
+
+
+
+```bash# Shelly External Temperature (Optional)
+
+docker compose up -d# Send temperature updates to Shelly device for external temperature control
+
+```# Example: http://192.168.86.32/ext_t?temp=
+
 SHELLY_TEMP_URL=  # Leave empty to disable
 
-# Temperature Control Settings
-BASE_TEMPERATURE=21.0  # Fallback if input_number not used
-BASE_TEMPERATURE_INPUT=input_number.heating_base_temperature  # Optional
-SETPOINT_OUTPUT=sensor.heating_target_setpoint  # Optional output sensor name (read-only)
+## Temperature Logic
 
-PRICE_LOW_THRESHOLD=10.0
+# Temperature Control Settings
+
+| Price (c/kWh) | Adjustment |BASE_TEMPERATURE=21.0  # Fallback if input_number not used
+
+|---------------|------------|BASE_TEMPERATURE_INPUT=input_number.heating_base_temperature  # Optional
+
+| ≤ 0           | +0.5°C     |SETPOINT_OUTPUT=sensor.heating_target_setpoint  # Optional output sensor name (read-only)
+
+| 10            | 0°C        |
+
+| ≥ 20          | -0.5°C     |PRICE_LOW_THRESHOLD=10.0
+
 PRICE_HIGH_THRESHOLD=20.0
-TEMP_VARIATION=0.5
+
+Linear interpolation between these points.TEMP_VARIATION=0.5
+
 ```
 
 **Note**: If `BASE_TEMPERATURE_INPUT` is set, the system will read the temperature from that entity in HA. If it's not set or fails to read, it will use the `BASE_TEMPERATURE` fallback value.
