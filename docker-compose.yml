@@ -29,7 +29,7 @@ services:
     working_dir: /app
     volumes:
       - ./data:/app/data
-    command: sh -c ". /app/.venv/bin/activate && gunicorn -w 1 -b 0.0.0.0:5000 --timeout 120 web_app:app"
+    command: sh -c ". /app/.venv/bin/activate && gunicorn -w 1 -b 0.0.0.0:5000 --timeout 120 web.app:app"
 
 networks:
   caddy-proxy:
