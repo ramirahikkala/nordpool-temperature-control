@@ -8,14 +8,14 @@ This module contains the main control cycle that:
 """
 import logging
 
-from config import (
+from .config import (
     TEMPERATURE_SENSOR,
     PRICE_SENSOR,
     CENTRAL_HEATING_SHUTOFF_SWITCH,
     MAX_SHUTOFF_HOURS,
     PRICE_ALWAYS_ON_THRESHOLD,
 )
-from ha_client import (
+from .ha_client import (
     get_base_temperature,
     get_current_price,
     get_current_temperature,
@@ -25,7 +25,7 @@ from ha_client import (
     update_setpoint_in_ha,
     ping_healthcheck,
 )
-from temperature_logic import (
+from .temperature_logic import (
     get_setpoint_temperature,
     should_central_heating_run,
     log_heating_decision,

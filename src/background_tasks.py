@@ -9,8 +9,8 @@ import logging
 import time
 import requests
 
-from config import SHELLY_TEMP_URL
-from ha_client import get_current_temperature
+from .config import SHELLY_TEMP_URL
+from .ha_client import get_current_temperature
 
 logger = logging.getLogger(__name__)
 

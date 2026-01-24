@@ -13,7 +13,7 @@ import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from config import (
+from .config import (
     HA_URL,
     HA_HEADERS,
     TEMPERATURE_SENSOR,
@@ -397,7 +397,7 @@ def ping_healthcheck(success=True):
     Args:
         success: True if control cycle completed successfully, False if it failed
     """
-    from config import HEALTHCHECK_URL
+    from .config import HEALTHCHECK_URL
     
     if not HEALTHCHECK_URL:
         return  # Healthcheck not configured

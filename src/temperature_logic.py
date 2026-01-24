@@ -8,14 +8,14 @@ Contains the algorithms for:
 import logging
 from datetime import datetime, timezone
 
-from config import (
+from .config import (
     TEMP_VARIATION,
     PRICE_LOW_THRESHOLD,
     MAX_SHUTOFF_HOURS,
     PRICE_ALWAYS_ON_THRESHOLD,
     CENTRAL_HEATING_SHUTOFF_SWITCH,
 )
-from heating_logger import log_heating_decision as log_decision_to_file
+from .heating_logger import log_heating_decision as log_decision_to_file
 
 logger = logging.getLogger(__name__)
 

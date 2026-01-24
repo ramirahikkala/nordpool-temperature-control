@@ -8,12 +8,13 @@ from flask_cors import CORS
 from flask_caching import Cache
 import threading
 import time
+import os
 from datetime import datetime, timedelta, timezone
 import requests
 import pytz
 
-# Import from refactored modules
-from config import (
+# Import from refactored modules (src package)
+from src.config import (
     HA_URL,
     HA_HEADERS,
     TEMPERATURE_SENSOR,
@@ -30,7 +31,7 @@ from config import (
     SETPOINT_OUTPUT,
     SHELLY_TEMP_URL,
 )
-from ha_client import (
+from src.ha_client import (
     get_base_temperature,
     get_current_price,
     get_current_temperature,
@@ -40,20 +41,23 @@ from ha_client import (
     get_room_heater_state,
     get_central_heating_state,
 )
-from temperature_logic import (
+from src.temperature_logic import (
     get_setpoint_temperature,
     should_central_heating_run,
 )
-from control import run_control
-from heating_logger import get_decisions, get_decisions_by_date
-from background_tasks import send_temperature_to_shelly, warm_cache
+from src.control import run_control
+from src.heating_logger import get_decisions, get_decisions_by_date
+from src.background_tasks import send_temperature_to_shelly, warm_cache
 
 
 # =============================================================================
 # Flask Application Setup
 # =============================================================================
 
-app = Flask(__name__)
+# Get the directory where this file is located
+_web_dir = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(__name__, template_folder=os.path.join(_web_dir, 'templates'))
 CORS(app)  # Enable CORS for API endpoints
 
 # Initialize caching with 15-minute timeout for history data

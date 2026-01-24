@@ -13,8 +13,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
-from config import TIMEZONE
-from control import run_control
+from src.config import TIMEZONE
+from src.control import run_control
 
 # Configure logging
 logging.basicConfig(
