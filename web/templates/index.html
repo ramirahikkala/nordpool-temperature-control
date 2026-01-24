@@ -229,24 +229,6 @@
                             <span id="temp-outdoor">--</span><span class="metric-unit">°C</span>
                         </div>
                     </div>
-                    <div class="metric secondary">
-                        <div class="metric-label">Peruslämpötila</div>
-                        <div class="metric-value">
-                            <span id="temp-base">--</span><span class="metric-unit">°C</span>
-                        </div>
-                    </div>
-                    <div class="metric secondary">
-                        <div class="metric-label">Tavoite</div>
-                        <div class="metric-value">
-                            <span id="temp-setpoint">--</span><span class="metric-unit">°C</span>
-                        </div>
-                    </div>
-                    <div class="metric secondary">
-                        <div class="metric-label">Säätö</div>
-                        <div class="metric-value">
-                            <span id="temp-adjustment">--</span><span class="metric-unit">°C</span>
-                        </div>
-                    </div>
                 </div>
                 
                 <div class="card">
@@ -376,6 +358,56 @@
                     <canvas id="tomorrowPriceChart"></canvas>
                 </div>
             </div>
+            
+            <!-- Hintariippuvaiset säädöt -->
+            <div class="grid" style="margin-top: 20px;">
+                <div class="card">
+                    <h2>🎯 Sisälämpötilan säätö</h2>
+                    <div class="metric">
+                        <div class="metric-label">Peruslämpötila</div>
+                        <div class="metric-value">
+                            <span id="adjust-base-temp">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Hintasäätö</div>
+                        <div class="metric-value">
+                            <span id="adjust-temp-adjustment">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">→ Tavoitelämpötila</div>
+                        <div class="metric-value" style="color: #007bff;">
+                            <span id="adjust-setpoint">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>🚿 Kylpyhuoneen termostaatti</h2>
+                    <div class="metric">
+                        <div class="metric-label">Mitattu lämpötila</div>
+                        <div class="metric-value">
+                            <span id="bathroom-raw-temp">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Hintasäätö</div>
+                        <div class="metric-value">
+                            <span id="bathroom-adjustment">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">→ Termostaatille lähetetty</div>
+                        <div class="metric-value" style="color: #17a2b8;">
+                            <span id="bathroom-adjusted-temp">--</span><span class="metric-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="metric secondary">
+                        <div class="metric-label">Kaava: lämpötila + (hinta - 5) / 5</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -469,12 +501,26 @@
                 // Store globally for history chart calculations
                 currentStatus = data;
                 
-                // Update temperature
+                // Update temperature (current readings)
                 document.getElementById('temp-current').textContent = data.temperature.current.toFixed(2);
                 document.getElementById('temp-outdoor').textContent = data.temperature.outdoor !== null ? data.temperature.outdoor.toFixed(1) : '--';
-                document.getElementById('temp-base').textContent = data.temperature.base.toFixed(2);
-                document.getElementById('temp-setpoint').textContent = data.temperature.setpoint.toFixed(2);
-                document.getElementById('temp-adjustment').textContent = (data.temperature.adjustment >= 0 ? '+' : '') + data.temperature.adjustment.toFixed(2);
+                
+                // Update indoor temperature adjustment section
+                document.getElementById('adjust-base-temp').textContent = data.temperature.base.toFixed(1);
+                document.getElementById('adjust-temp-adjustment').textContent = (data.temperature.adjustment >= 0 ? '+' : '') + data.temperature.adjustment.toFixed(2);
+                document.getElementById('adjust-setpoint').textContent = data.temperature.setpoint.toFixed(1);
+                
+                // Update bathroom thermostat section
+                if (data.bathroom_thermostat && data.bathroom_thermostat.configured) {
+                    const bt = data.bathroom_thermostat;
+                    document.getElementById('bathroom-raw-temp').textContent = bt.raw_temp !== null ? bt.raw_temp.toFixed(1) : '--';
+                    document.getElementById('bathroom-adjustment').textContent = bt.adjustment !== null ? ((bt.adjustment >= 0 ? '+' : '') + bt.adjustment.toFixed(2)) : '--';
+                    document.getElementById('bathroom-adjusted-temp').textContent = bt.adjusted_temp !== null ? bt.adjusted_temp.toFixed(1) : '--';
+                } else {
+                    document.getElementById('bathroom-raw-temp').textContent = '--';
+                    document.getElementById('bathroom-adjustment').textContent = '--';
+                    document.getElementById('bathroom-adjusted-temp').textContent = '--';
+                }
                 
                 // Update price
                 document.getElementById('price-current').textContent = data.price.current.toFixed(2);

@@ -29,6 +29,8 @@ from src.config import (
     PRICE_HIGH_THRESHOLD,
     TEMP_VARIATION,
     SETPOINT_OUTPUT,
+    BATHROOM_TEMP_SENSOR,
+    BATHROOM_THERMOSTAT_URL,
 )
 from src.ha_client import (
     get_base_temperature,
@@ -46,7 +48,11 @@ from src.temperature_logic import (
 )
 from src.control import run_control
 from src.heating_logger import get_decisions, get_decisions_by_date
-from src.background_tasks import warm_cache
+from src.background_tasks import (
+    warm_cache,
+    get_bathroom_raw_temperature,
+    calculate_bathroom_adjusted_temperature,
+)
 
 
 # =============================================================================
@@ -88,6 +94,49 @@ def start_cache_warmer_once():
         thread = threading.Thread(target=warm_cache, args=(app, endpoints_to_warm), daemon=True)
         thread.start()
         _cache_warmer_started = True
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def _get_bathroom_thermostat_status(current_price):
+    """Get bathroom thermostat status for API response.
+    
+    Returns:
+        dict with raw_temp, adjustment, adjusted_temp, configured, sensor, url
+        or None if not configured
+    """
+    if not BATHROOM_THERMOSTAT_URL or not BATHROOM_TEMP_SENSOR:
+        return {
+            "configured": False,
+            "sensor": BATHROOM_TEMP_SENSOR,
+            "url": BATHROOM_THERMOSTAT_URL
+        }
+    
+    raw_temp = get_bathroom_raw_temperature()
+    
+    if raw_temp is None or current_price is None:
+        return {
+            "configured": True,
+            "raw_temp": raw_temp,
+            "adjustment": None,
+            "adjusted_temp": None,
+            "sensor": BATHROOM_TEMP_SENSOR,
+            "url": BATHROOM_THERMOSTAT_URL
+        }
+    
+    adjustment = (current_price - 5) / 5
+    adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, current_price)
+    
+    return {
+        "configured": True,
+        "raw_temp": raw_temp,
+        "adjustment": adjustment,
+        "adjusted_temp": adjusted_temp,
+        "sensor": BATHROOM_TEMP_SENSOR,
+        "url": BATHROOM_THERMOSTAT_URL
+    }
 
 
 # =============================================================================
@@ -279,6 +328,7 @@ def api_status():
                     "decision": central_heating_decision
                 }
             },
+            "bathroom_thermostat": _get_bathroom_thermostat_status(current_price),
             "config": {
                 "base_temperature_fallback": BASE_TEMPERATURE_FALLBACK,
                 "base_temperature_input": BASE_TEMPERATURE_INPUT,
