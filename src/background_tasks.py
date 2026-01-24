@@ -59,57 +59,103 @@ def calculate_bathroom_adjusted_temperature(raw_temp: float, price: float) -> fl
     return raw_temp + adjustment
 
 
-def send_temperature_to_bathroom_thermostat():
-    """Send price-adjusted temperature to bathroom thermostat.
+def _send_to_thermostat(url: str, timeout: int = 5) -> bool:
+    """Send HTTP GET request to thermostat.
+    
+    Args:
+        url: Full URL including temperature parameter
+        timeout: Request timeout in seconds
+        
+    Returns:
+        True if successful (HTTP 200), False otherwise
+        
+    Raises:
+        requests.exceptions.RequestException on network errors
+    """
+    response = requests.get(url, timeout=timeout)
+    return response.status_code == 200
+
+
+def send_temperature_to_bathroom_thermostat(max_retry_time: int = 840):
+    """Send price-adjusted temperature to bathroom thermostat with exponential backoff.
     
     This function sends the current bathroom temperature (adjusted for electricity
     price) to a Shelly TRV via HTTP GET request. The TRV uses this external 
     temperature for room control.
     
+    Uses exponential backoff retry strategy:
+    - Initial delay: 5 seconds
+    - Max delay: 120 seconds (2 minutes)
+    - Total retry time: 14 minutes (840 seconds) by default
+    
+    This ensures retries complete before the next 15-minute control cycle.
+    
     Called from main control cycle every 15 minutes.
     
+    Args:
+        max_retry_time: Maximum total time to retry in seconds (default 840 = 14 min)
+    
     Returns:
-        bool: True if successful, False otherwise
+        bool: True if successful, False if all retries failed
     """
     if not BATHROOM_THERMOSTAT_URL:
         return False
     
-    try:
-        # Get raw temperature from Ruuvitag
-        raw_temp = get_bathroom_raw_temperature()
-        if raw_temp is None:
-            logger.warning("Could not get bathroom temperature, skipping thermostat update")
+    # Get raw temperature from Ruuvitag
+    raw_temp = get_bathroom_raw_temperature()
+    if raw_temp is None:
+        logger.warning("Could not get bathroom temperature, skipping thermostat update")
+        return False
+    
+    # Get current electricity price
+    price = get_current_price()
+    if price is None:
+        logger.warning("Could not get electricity price, using raw temperature")
+        adjusted_temp = raw_temp
+    else:
+        # Apply price adjustment (same formula as HA template)
+        adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, price)
+        logger.info(f"Bathroom temp: {raw_temp:.1f}°C raw, {adjusted_temp:.1f}°C adjusted (price: {price:.2f} c/kWh)")
+    
+    # Send to Shelly TRV with exponential backoff
+    url = f"{BATHROOM_THERMOSTAT_URL}{adjusted_temp:.1f}"
+    
+    # Exponential backoff parameters
+    initial_delay = 5
+    max_delay = 120
+    delay = initial_delay
+    attempt = 1
+    start_time = time.time()
+    
+    while True:
+        try:
+            if _send_to_thermostat(url):
+                if attempt == 1:
+                    logger.info(f"Sent {adjusted_temp:.1f}°C to bathroom thermostat")
+                else:
+                    logger.info(f"Sent {adjusted_temp:.1f}°C to bathroom thermostat (attempt {attempt})")
+                return True
+            else:
+                logger.info(f"Bathroom thermostat returned non-200, attempt {attempt}")
+                
+        except requests.exceptions.Timeout:
+            logger.info(f"Bathroom thermostat timeout, attempt {attempt}")
+        except requests.exceptions.ConnectionError:
+            logger.info(f"Bathroom thermostat connection error, attempt {attempt}")
+        except Exception as e:
+            logger.info(f"Bathroom thermostat error: {e}, attempt {attempt}")
+        
+        # Check if we've exceeded max retry time
+        elapsed = time.time() - start_time
+        if elapsed + delay > max_retry_time:
+            logger.warning(f"Failed to send temperature to bathroom thermostat after {attempt} attempts over {elapsed:.0f}s")
             return False
         
-        # Get current electricity price
-        price = get_current_price()
-        if price is None:
-            logger.warning("Could not get electricity price, using raw temperature")
-            adjusted_temp = raw_temp
-        else:
-            # Apply price adjustment (same formula as HA template)
-            adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, price)
-            logger.info(f"Bathroom temp: {raw_temp:.1f}°C raw, {adjusted_temp:.1f}°C adjusted (price: {price:.2f} c/kWh)")
-        
-        # Send to Shelly TRV
-        url = f"{BATHROOM_THERMOSTAT_URL}{adjusted_temp:.1f}"
-        response = requests.get(url, timeout=5)
-        
-        if response.status_code == 200:
-            logger.info(f"Sent {adjusted_temp:.1f}°C to bathroom thermostat")
-            return True
-        else:
-            logger.warning(f"Failed to send temperature to bathroom thermostat: HTTP {response.status_code}")
-            return False
-    
-    except requests.exceptions.Timeout:
-        logger.warning("Timeout sending temperature to bathroom thermostat")
-    except requests.exceptions.ConnectionError:
-        logger.warning("Connection error sending temperature to bathroom thermostat")
-    except Exception as e:
-        logger.warning(f"Error sending temperature to bathroom thermostat: {e}")
-    
-    return False
+        # Wait before next retry (exponential backoff)
+        logger.info(f"Retrying bathroom thermostat in {delay}s...")
+        time.sleep(delay)
+        delay = min(delay * 2, max_delay)
+        attempt += 1
 
 
 def warm_cache(app, endpoints):
