@@ -1171,6 +1171,26 @@
                 outdoorTempChart.destroy();
             }
             
+            // Calculate Y-axis range with minimum 10°C span
+            let yMin, yMax;
+            if (outdoorTempPoints.length > 0) {
+                const values = outdoorTempPoints.map(p => p.y);
+                const dataMin = Math.min(...values);
+                const dataMax = Math.max(...values);
+                const dataRange = dataMax - dataMin;
+                
+                if (dataRange < 10) {
+                    // Expand range to 10°C, centered on data
+                    const center = (dataMin + dataMax) / 2;
+                    yMin = center - 5;
+                    yMax = center + 5;
+                } else {
+                    // Use auto-scaling (undefined lets Chart.js decide)
+                    yMin = undefined;
+                    yMax = undefined;
+                }
+            }
+            
             outdoorTempChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -1217,6 +1237,8 @@
                         y: {
                             type: 'linear',
                             position: 'left',
+                            min: yMin,
+                            max: yMax,
                             title: {
                                 display: true,
                                 text: 'Ulkolämpötila (°C)'
