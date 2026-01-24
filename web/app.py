@@ -91,16 +91,6 @@ def start_cache_warmer_once():
 
 
 # =============================================================================
-# Helper Functions
-# =============================================================================
-
-def get_yesterday_prices():
-    """Get yesterday's prices (not available from Spot-Hinta API)."""
-    # Spot-Hinta API doesn't provide historical data beyond today
-    return None
-
-
-# =============================================================================
 # Web Routes
 # =============================================================================
 
@@ -179,22 +169,20 @@ def api_switches_state():
 
 @app.route('/api/prices')
 def api_prices():
-    """Get electricity prices: today, yesterday, tomorrow.
+    """Get electricity prices: today and tomorrow.
     
-    Returns: {current: float, daily_prices: [96], yesterday_prices: [96], tomorrow_prices: [96], daily_min: float, daily_max: float}
+    Returns: {current: float, daily_prices: [96], tomorrow_prices: [96], daily_min: float, daily_max: float}
     NOT cached - current price must be fresh
     """
     try:
         current_price = get_current_price()
         daily_prices = get_daily_prices()
-        yesterday_prices = get_yesterday_prices()
         tomorrow_prices = get_tomorrow_prices()
         
         return jsonify({
             "timestamp": datetime.now().isoformat(),
             "current": current_price,
             "daily_prices": daily_prices,
-            "yesterday_prices": yesterday_prices,
             "tomorrow_prices": tomorrow_prices,
             "daily_min": min(daily_prices) if daily_prices else None,
             "daily_max": max(daily_prices) if daily_prices else None
@@ -253,7 +241,6 @@ def api_status():
         
         # Get daily prices and central heating decision
         daily_prices = get_daily_prices()
-        yesterday_prices = get_yesterday_prices()
         tomorrow_prices = get_tomorrow_prices()
         
         central_heating_decision = None
@@ -276,7 +263,6 @@ def api_status():
             "price": {
                 "current": current_price,
                 "daily_prices": daily_prices,
-                "yesterday_prices": yesterday_prices,
                 "tomorrow_prices": tomorrow_prices,
                 "daily_min": min(daily_prices) if daily_prices else None,
                 "daily_max": max(daily_prices) if daily_prices else None

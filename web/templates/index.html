@@ -376,20 +376,12 @@
                     <canvas id="tomorrowPriceChart"></canvas>
                 </div>
             </div>
-            
-            <div class="card">
-                <h2>💰 Sähkönhinta eilen (24 h)</h2>
-                <div class="chart-container">
-                    <canvas id="yesterdayPriceChart"></canvas>
-                </div>
-            </div>
         </div>
     </div>
     
     <script>
         let priceChart = null;
         let tomorrowPriceChart = null;
-        let yesterdayPriceChart = null;
         let rollingPriceChart = null;
         let indoorTempChart = null;
         let outdoorTempChart = null;
@@ -570,11 +562,6 @@
                         tomorrowPriceChart.destroy();
                         tomorrowPriceChart = null;
                     }
-                }
-                
-                // Update yesterday price chart
-                if (data.price.yesterday_prices) {
-                    updateYesterdayPriceChart(data.price.yesterday_prices);
                 }
                 
                 // Load historical data
@@ -821,203 +808,6 @@
                                     return original;
                                 }
                             }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return context.parsed.y.toFixed(2) + ' c/kWh';
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: {
-                                maxTicksLimit: 24,
-                                maxRotation: 45,
-                                minRotation: 45
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toFixed(2);
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        async function updateYesterdayPriceChart(prices) {
-            const ctx = document.getElementById('yesterdayPriceChart').getContext('2d');
-            
-            // Create labels for every 15 minutes (quarter hours) in local time
-            const labels = [];
-            for (let i = 0; i < prices.length; i++) {
-                const localHour = Math.floor(i / 4);
-                const minute = (i % 4) * 15;
-                labels.push(`${localHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
-            }
-            
-            if (yesterdayPriceChart) {
-                yesterdayPriceChart.destroy();
-            }
-            
-            // Fetch yesterday's central heating history for annotations
-            let annotations = {};
-            try {
-                // Get data from 48 hours ago to 24 hours ago
-                const response = await fetch('/api/history?hours=48');
-                if (response.ok) {
-                    const historyData = await response.json();
-                    const entities = historyData.entities;
-                    
-                    // Find central heating data
-                    // Find central heating data (provided by backend)
-                    const centralHeatingEntity = historyData.central_heating_entity || null;
-                    const centralHeatingData = (centralHeatingEntity && entities[centralHeatingEntity]) ? entities[centralHeatingEntity] : [];
-                    
-                    // Get yesterday's date boundaries in local time
-                    const now = new Date();
-                    const startOfYesterdayLocal = new Date(now);
-                    startOfYesterdayLocal.setDate(startOfYesterdayLocal.getDate() - 1);
-                    startOfYesterdayLocal.setHours(0, 0, 0, 0);
-                    const endOfYesterdayLocal = new Date(startOfYesterdayLocal);
-                    endOfYesterdayLocal.setHours(23, 59, 59, 999);
-                    
-                    // Find the state at the start of yesterday
-                    let stateAtYesterdayStart = 'off'; // Default: heating is normally OFF (blocked)
-                    for (let i = centralHeatingData.length - 1; i >= 0; i--) {
-                        const time = new Date(centralHeatingData[i].timestamp);
-                        if (time < startOfYesterdayLocal) {
-                            stateAtYesterdayStart = centralHeatingData[i].value;
-                            break;
-                        }
-                    }
-                    
-                    // Get all state changes during yesterday
-                    const yesterdayChanges = centralHeatingData.filter(point => {
-                        const time = new Date(point.timestamp);
-                        const inRange = time >= startOfYesterdayLocal && time <= endOfYesterdayLocal;
-                        return inRange;
-                    });
-                    
-                    // Create annotations for ON periods (heating blocked)
-                    let annotationIndex = 0;
-                    let blockStart = null;
-                    let currentState = stateAtYesterdayStart;
-                    
-                    // Process each state change during yesterday
-                    for (let i = 0; i < yesterdayChanges.length; i++) {
-                        const point = yesterdayChanges[i];
-                        const time = new Date(point.timestamp);
-                        const newState = point.value;
-                        
-                        // Calculate quarter-hour index in local time
-                        // Chart labels show local times (0-23 hours), so use local time directly
-                        const localHour = time.getHours();
-                        const minute = time.getMinutes();
-                        let quarterIndex = localHour * 4 + Math.floor(minute / 15);
-                        
-                        if (newState === 'on' && currentState !== 'on') {
-                            // Transition to ON (blocking starts)
-                            blockStart = quarterIndex;
-                        } else if (newState === 'off' && currentState === 'on') {
-                            // Transition from ON to OFF (blocking ends)
-                            if (blockStart !== null) {
-                                // Use -0.5 and +0.5 to align box edges with bar edges (bars are centered on index)
-                                annotations[`block${annotationIndex}`] = {
-                                    type: 'box',
-                                    xMin: blockStart - 0.5,
-                                    xMax: quarterIndex - 0.5,
-                                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                                    borderColor: 'rgba(220, 53, 69, 0.3)',
-                                    borderWidth: 1
-                                };
-                                annotationIndex++;
-                                blockStart = null;
-                            }
-                        }
-                        currentState = newState;
-                    }
-                    
-                    // If day ended while heating was blocked
-                    if (currentState === 'on' && blockStart !== null) {
-                        annotations[`block${annotationIndex}`] = {
-                            type: 'box',
-                            xMin: blockStart - 0.5,
-                            xMax: 95.5, // End of day (23:45) - right edge of last bar
-                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                            borderColor: 'rgba(220, 53, 69, 0.3)',
-                            borderWidth: 1
-                        };
-                    }
-                    // If day started while heating was blocked
-                    else if (stateAtYesterdayStart === 'on') {
-                        // Find the end of the blocking period (when it transitions to OFF)
-                        let blockEndQuarter = 95; // Default: end of day if it never turned off
-                        for (let i = 0; i < yesterdayChanges.length; i++) {
-                            if (yesterdayChanges[i].value === 'off') {
-                                const time = new Date(yesterdayChanges[i].timestamp);
-                                const hour = time.getHours();
-                                const minute = time.getMinutes();
-                                blockEndQuarter = hour * 4 + Math.floor(minute / 15);
-                                break;
-                            }
-                        }
-                        
-                        annotations[`block${annotationIndex}`] = {
-                            type: 'box',
-                            xMin: -0.5, // Start of day - left edge of first bar
-                            xMax: blockEndQuarter - 0.5,
-                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                            borderColor: 'rgba(220, 53, 69, 0.3)',
-                            borderWidth: 1
-                        };
-                    }
-                }
-            } catch (error) {
-                console.error('Failed to fetch yesterday central heating history:', error);
-            }
-            
-            yesterdayPriceChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Hinta (c/kWh)',
-                        data: prices,
-                        backgroundColor: 'rgba(108, 117, 125, 0.6)',
-                        borderColor: '#6c757d',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            labels: {
-                                generateLabels: function(chart) {
-                                    const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
-                                    // Add custom legend item for central heating blocked periods
-                                    original.push({
-                                        text: 'Keskuslämmitys pois',
-                                        fillStyle: 'rgba(220, 53, 69, 0.3)',
-                                        strokeStyle: 'rgba(220, 53, 69, 0.3)',
-                                        lineWidth: 0,
-                                        hidden: false
-                                    });
-                                    return original;
-                                }
-                            }
-                        },
-                        annotation: {
-                            annotations: annotations
                         },
                         tooltip: {
                             callbacks: {
