@@ -9,10 +9,33 @@ import logging
 import time
 import requests
 
-from .config import SHELLY_TEMP_URL
+from .config import SHELLY_TEMP_URL, SHELLY_TEMP_SENSOR, HA_URL, HA_HEADERS
 from .ha_client import get_current_temperature
 
 logger = logging.getLogger(__name__)
+
+
+def get_shelly_temperature():
+    """Get temperature to send to Shelly device.
+    
+    Uses SHELLY_TEMP_SENSOR if configured, otherwise falls back to TEMPERATURE_SENSOR.
+    """
+    if SHELLY_TEMP_SENSOR:
+        # Use dedicated Shelly sensor
+        try:
+            response = requests.get(
+                f"{HA_URL}/api/states/{SHELLY_TEMP_SENSOR}",
+                headers=HA_HEADERS,
+                timeout=5
+            )
+            if response.status_code == 200:
+                return float(response.json().get('state'))
+        except Exception as e:
+            logger.warning(f"Error reading {SHELLY_TEMP_SENSOR}: {e}")
+        return None
+    else:
+        # Fall back to main temperature sensor
+        return get_current_temperature()
 
 
 def send_temperature_to_shelly():
@@ -29,12 +52,13 @@ def send_temperature_to_shelly():
         logger.info("Shelly temperature sender disabled (SHELLY_TEMP_URL not configured)")
         return
     
-    logger.info(f"Starting Shelly temperature sender (URL: {SHELLY_TEMP_URL})")
+    sensor_info = f" (sensor: {SHELLY_TEMP_SENSOR})" if SHELLY_TEMP_SENSOR else ""
+    logger.info(f"Starting Shelly temperature sender (URL: {SHELLY_TEMP_URL}){sensor_info}")
     
     while True:
         try:
-            # Get current temperature from Home Assistant
-            temp = get_current_temperature()
+            # Get temperature to send (from dedicated sensor or main sensor)
+            temp = get_shelly_temperature()
             
             if temp is not None:
                 # Send to Shelly device
