@@ -75,12 +75,9 @@ def start_cache_warmer_once():
     """Start cache warmer only once, even if module is loaded multiple times."""
     global _cache_warmer_started
     if not _cache_warmer_started:
+        # Only warm endpoints that are actually cached (history data)
+        # Current state/price endpoints are NOT cached - always fresh
         endpoints_to_warm = [
-            '/api/current-state',
-            '/api/switches-state',
-            '/api/prices',
-            '/api/central-heating-decision',
-            '/api/status',
             '/api/history?hours=24',
             f'/api/switch-history?entity_id={SWITCH_ENTITY}&hours=24' if SWITCH_ENTITY else None,
             '/api/heating-decisions?limit=20',
@@ -118,12 +115,11 @@ def index():
 # =============================================================================
 
 @app.route('/api/current-state')
-@cache.cached(timeout=60, query_string=True)
 def api_current_state():
     """Get current temperature, price, and setpoint.
     
     Returns: {temperature: float, price: float, setpoint: float, adjustment: float}
-    Cached for 1 minute (real-time updates)
+    NOT cached - always returns fresh data
     """
     try:
         base_temp = get_base_temperature()
@@ -148,12 +144,11 @@ def api_current_state():
 
 
 @app.route('/api/switches-state')
-@cache.cached(timeout=60, query_string=True)
 def api_switches_state():
     """Get current state of all switches (room heater, central heating).
     
     Returns: {room_heater: {state, entity_id}, central_heating: {state, is_running, entity_id}}
-    Cached for 1 minute (real-time updates)
+    NOT cached - always returns fresh data
     """
     try:
         result = {
@@ -183,12 +178,11 @@ def api_switches_state():
 
 
 @app.route('/api/prices')
-@cache.cached(timeout=900, query_string=True)
 def api_prices():
     """Get electricity prices: today, yesterday, tomorrow.
     
     Returns: {current: float, daily_prices: [96], yesterday_prices: [96], tomorrow_prices: [96], daily_min: float, daily_max: float}
-    Cached for 5 minutes
+    NOT cached - current price must be fresh
     """
     try:
         current_price = get_current_price()
@@ -210,12 +204,11 @@ def api_prices():
 
 
 @app.route('/api/central-heating-decision')
-@cache.cached(timeout=900, query_string=True)
 def api_central_heating_decision():
     """Get central heating run/block decision logic.
     
     Returns: {should_run: bool, reason: str, current_price: float}
-    Cached for 5 minutes
+    NOT cached - must reflect current price
     """
     try:
         current_price = get_current_price()
@@ -237,12 +230,11 @@ def api_central_heating_decision():
 
 
 @app.route('/api/status')
-@cache.cached(timeout=60, query_string=True)
 def api_status():
     """Get combined current status (aggregates all focused endpoints).
     
     This endpoint combines data from multiple focused endpoints for convenience.
-    Cached for 1 minute.
+    NOT cached - always returns fresh data
     """
     try:
         base_temp = get_base_temperature()
