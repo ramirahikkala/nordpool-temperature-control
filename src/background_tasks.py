@@ -48,6 +48,8 @@ def calculate_bathroom_adjusted_temperature(raw_temp: float, price: float) -> fl
     This makes the thermostat think it's warmer when electricity is expensive
     (so it heats less) and cooler when electricity is cheap (so it heats more).
     
+    The adjustment is capped to ±1°C to avoid extreme changes.
+    
     Args:
         raw_temp: Raw temperature from sensor
         price: Current electricity price in c/kWh
@@ -56,6 +58,8 @@ def calculate_bathroom_adjusted_temperature(raw_temp: float, price: float) -> fl
         Adjusted temperature to send to thermostat
     """
     adjustment = (price - 5) / 5
+    # Cap adjustment to ±1°C
+    adjustment = max(-1.0, min(1.0, adjustment))
     return raw_temp + adjustment
 
 

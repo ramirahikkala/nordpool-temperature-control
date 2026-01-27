@@ -127,6 +127,8 @@ def _get_bathroom_thermostat_status(current_price):
         }
     
     adjustment = (current_price - 5) / 5
+    # Cap adjustment to ±1°C
+    adjustment = max(-1.0, min(1.0, adjustment))
     adjusted_temp = calculate_bathroom_adjusted_temperature(raw_temp, current_price)
     
     return {
