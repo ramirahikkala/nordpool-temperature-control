@@ -1337,6 +1337,16 @@
                     }
                 });
                 
+                // Forward-fill missing values (when price doesn't change, HA doesn't log new values)
+                let lastValue = null;
+                for (let i = 0; i < quarters.length; i++) {
+                    if (quarters[i] !== null) {
+                        lastValue = quarters[i];
+                    } else if (lastValue !== null) {
+                        quarters[i] = lastValue;
+                    }
+                }
+                
                 // Create data points with timestamps
                 pricePoints = quarterTimes.map((time, i) => ({
                     x: time,
