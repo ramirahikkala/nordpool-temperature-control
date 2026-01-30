@@ -61,6 +61,7 @@ SETPOINT_OUTPUT = os.getenv("SETPOINT_OUTPUT")  # Optional sensor to publish set
 PRICE_SENSOR = os.getenv("PRICE_SENSOR", "sensor.nordpool_kwh_fi_eur_3_10_0255")  # DEPRECATED
 SPOT_HINTA_API_JUSTNOW = os.getenv("SPOT_HINTA_API_JUSTNOW", "https://api.spot-hinta.fi/JustNow")
 SPOT_HINTA_API_URL = os.getenv("SPOT_HINTA_API_URL", "https://api.spot-hinta.fi/TodayAndDayForward")
+ELECTRICITY_VAT_MULTIPLIER = float(os.getenv("ELECTRICITY_VAT_MULTIPLIER", "1.255"))  # 25.5% VAT in Finland
 
 # =============================================================================
 # Temperature Control Settings

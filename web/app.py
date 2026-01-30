@@ -31,6 +31,7 @@ from src.config import (
     SETPOINT_OUTPUT,
     BATHROOM_TEMP_SENSOR,
     BATHROOM_THERMOSTAT_URL,
+    ELECTRICITY_VAT_MULTIPLIER,
 )
 from src.ha_client import (
     get_base_temperature,
@@ -602,7 +603,7 @@ def api_history():
         if CENTRAL_HEATING_SHUTOFF_SWITCH:
             entities.append(CENTRAL_HEATING_SHUTOFF_SWITCH)
         
-        # Add Nordpool sensor for historical prices
+        # Add Nordpool sensor for historical prices (without VAT - we add it client-side)
         nordpool_sensor = "sensor.nord_pool_fi_current_price"
         entities.append(nordpool_sensor)
         
@@ -655,6 +656,9 @@ def api_history():
                     if value not in ['on', 'off', 'unavailable', 'unknown']:
                         try:
                             value = float(value)
+                            # Apply VAT to Nordpool price sensor (prices come without VAT from HA)
+                            if entity_id == nordpool_sensor:
+                                value = value * ELECTRICITY_VAT_MULTIPLIER
                         except (ValueError, TypeError):
                             pass
                     

@@ -1296,7 +1296,7 @@
             
             const entities = historyData.entities;
             
-            // Get Nordpool price history (already in c/kWh from HA sensor)
+            // Get Nordpool price history (in c/kWh from HA sensor, without VAT)
             const nordpoolEntity = historyData.nordpool_price_entity;
             let pricePoints = [];
             
