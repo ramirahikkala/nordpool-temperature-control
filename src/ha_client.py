@@ -171,7 +171,7 @@ def get_current_price():
     """Get current electricity price from Spot-Hinta API /JustNow endpoint.
     
     Returns:
-        float: Current price in c/kWh, or None on error
+        float: Current price in c/kWh (with tax), or None on error
     """
     def _fetch():
         try:
@@ -179,13 +179,13 @@ def get_current_price():
             if response.status_code == 200:
                 data = response.json()
                 # API returns: {"DateTime": "...", "PriceNoTax": 0.09947, "PriceWithTax": 0.12483}
-                price_eur = data.get('PriceNoTax')
+                price_eur = data.get('PriceWithTax')
                 if price_eur is not None:
                     price_cents = price_eur * 100  # Convert EUR/kWh to c/kWh
-                    logger.debug(f"Current price from API: {price_cents:.2f} c/kWh")
+                    logger.debug(f"Current price from API: {price_cents:.2f} c/kWh (with tax)")
                     return price_cents
                 else:
-                    logger.error("No PriceNoTax in API response")
+                    logger.error("No PriceWithTax in API response")
                     return None
             else:
                 logger.error(f"Error getting price from API: Status {response.status_code}")
@@ -200,7 +200,7 @@ def get_current_price():
 def get_daily_prices():
     """Get all quarter-hourly prices for today from Spot-Hinta API.
     
-    Uses /TodayAndDayForward endpoint and extracts today's prices.
+    Uses /TodayAndDayForward endpoint and extracts today's prices (with tax).
     
     Returns:
         list: List of prices (96 values for 24 hours at 15-minute resolution), or None on error
@@ -219,7 +219,7 @@ def get_daily_prices():
             for price_point in data:
                 dt = datetime.fromisoformat(price_point['DateTime'])
                 if dt.date() == today:
-                    price_eur = price_point['PriceNoTax']
+                    price_eur = price_point['PriceWithTax']
                     price_cents = price_eur * 100  # Convert EUR/kWh to c/kWh
                     today_prices.append(price_cents)
             
@@ -240,7 +240,7 @@ def get_tomorrow_prices():
     """Get tomorrow's prices from Spot-Hinta API if available.
     
     Returns:
-        list: List of 96 prices for tomorrow (c/kWh), or None if not available
+        list: List of 96 prices for tomorrow (c/kWh with tax), or None if not available
     """
     try:
         response = requests.get(SPOT_HINTA_API_URL, timeout=10)
@@ -256,7 +256,7 @@ def get_tomorrow_prices():
             for price_point in data:
                 dt = datetime.fromisoformat(price_point['DateTime'])
                 if dt.date() == tomorrow_date:
-                    price_eur = price_point['PriceNoTax']
+                    price_eur = price_point['PriceWithTax']
                     price_cents = price_eur * 100
                     tomorrow_prices.append(price_cents)
             
